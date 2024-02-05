@@ -10,7 +10,8 @@ pub struct RawValue {
     pub children: Vec<(Value, f64)>,
 }
 
-pub struct Value(Rc<RefCell<RawValue>>);
+#[derive(Clone)]
+pub struct Value(pub Rc<RefCell<RawValue>>);
 
 pub static COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -28,7 +29,7 @@ impl Value {
     pub fn data(&self) -> f64 { self.0.borrow().data }
     pub fn grad(&self) -> f64 { self.0.borrow().grad }
 
-    pub fn clone(&self) -> Value { Value(Rc::clone(&self.0)) }
+    // pub fn clone(&self) -> Value { Value(Rc::clone(&self.0)) }
 
     pub fn _backward(&self) {
         for (child, x) in self.0.borrow().children.iter() {
@@ -38,7 +39,7 @@ impl Value {
 
     pub fn backward(&self) {
         self.0.borrow_mut().grad = 1.0;
-        
+            
         let mut topo: Vec<Value> = Vec::new();
         let mut visited: HashSet<usize> = HashSet::new();
 
@@ -52,7 +53,7 @@ impl Value {
             topo.push(v.clone());
         }
         build_topo(self.clone(), &mut topo, &mut visited);
-        
+            
         topo.reverse();
 
         for v in topo.iter() {
@@ -73,6 +74,14 @@ impl Value {
         } else {
             out.0.borrow_mut().children.push((self.clone(), 0.0))
         }
+        out
+    }
+}
+
+use std::iter::Sum;
+impl Sum for Value {
+    fn sum<I: Iterator<Item = Value>>(iter: I) -> Self {
+        let out: Value = iter.fold(Value::new(0.0), |acc, value| acc + value);
         out
     }
 }
