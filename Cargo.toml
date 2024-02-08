@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 mnist = "0.6.0"
 rand = "0.8.4"
+ndarray = "0.15.3"
