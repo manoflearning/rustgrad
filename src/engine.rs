@@ -1,4 +1,7 @@
-// base operator (defined as itself): add, mul, neg, pow, exp, relu
+// base operator (defined as itself):
+// add, mul, neg, pow, exp, relu
+// more operator (defined as a combination of base operators):
+// sub, div, sigmoid
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashSet;
