@@ -7,10 +7,12 @@ pub struct Tensor {
 }
 
 impl Tensor {
+    // consider 2D tensors only
+    // TODO: implement 1D, 3D, ... tensors
     pub fn new(data: Vec<f64>) -> Self {
         Tensor { 
             data: data.iter().map(|x| Value::new(*x)).collect(), 
-            shape: vec![data.len()],
+            shape: vec![data.len(), 1],
         }
     }
 
@@ -62,6 +64,20 @@ impl Tensor {
         };
         out
     }
+
+    // consider 2D matrix multiplication only
+    pub fn dot(&self, other: Tensor) -> Tensor {
+        let mut out = Tensor::new(vec![0.0; self.shape[1] * other.shape[1]]);
+        for i in 0..self.shape[1] {
+            for j in 0..other.shape[1] {
+                out.data[i * other.shape[1] + j] = (0..self.shape[0]).map(|k| 
+                    self.data[i * self.shape[1] + k].clone() 
+                    * other.data[k * other.shape[1] + j].clone())
+                .sum();
+            }
+        }
+        out
+    }
 }
 
 use std::ops::{Add, Sub, Mul, Div, Neg};
@@ -103,7 +119,8 @@ impl Sub<Tensor> for f64 {
     fn sub(self: f64, other: Tensor) -> Self::Output { Tensor::new(vec![self]) + -other }
 }
 
-impl Mul<Tensor> for Tensor {
+// element-wise multiplication
+impl Mul<Tensor> for Tensor { 
     type Output = Tensor;
     fn mul(self: Tensor, other: Tensor) -> Self::Output {
         let out = Tensor {
