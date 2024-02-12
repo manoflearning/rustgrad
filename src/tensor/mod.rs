@@ -36,11 +36,10 @@ impl Tensor {
     }
 
     pub fn log(&self) -> Tensor {
-        let out = Tensor {
+        Tensor {
             data: self.data.iter().map(|x| x.iter().map(|y| y.log()).collect()).collect(),
             shape: self.shape.clone(),
-        };
-        out
+        }
     }
 
     pub fn pow(&self, other: f64) -> Tensor {
@@ -84,8 +83,8 @@ impl Tensor {
     }
 
     pub fn dot(&self, other: &Tensor) -> Tensor {
-        println!("({}, {})", other.shape[0], other.shape[1]);
-        println!("({}, {})", self.shape[0], self.shape[1]);
+        // println!("({}, {})", other.shape[0], other.shape[1]);
+        // println!("({}, {})", self.shape[0], self.shape[1]);
 
         assert_eq!(self.shape[1], other.shape[0]);
         let mut out = Tensor::new(vec![vec![0.0; other.shape[1]]; self.shape[0]], vec![self.shape[0], other.shape[1]]);
@@ -115,9 +114,9 @@ impl Tensor {
         for c in 0..self.shape[1] {
             let mut tmp = Vec::new();
             for r in 0..self.shape[0] {
-                tmp.push(self.data[r][c].clone());
+                tmp.push(self.data[r][c].exp());
             }
-            let sum: Value = tmp.iter().map(|x| x.clone().exp()).sum();
+            let sum: Value = tmp.iter().map(|x| x.clone()).sum();
             for r in 0..self.shape[0] {
                 out.data[r][c] = tmp[r].clone() / sum.clone();
             }
