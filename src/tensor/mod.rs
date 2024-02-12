@@ -7,12 +7,12 @@ pub struct Tensor {
 }
 
 impl Tensor {
-    // consider 2D tensors only
+    // support 2D tensors only
     // TODO: implement 1D, 3D, ... tensors
-    pub fn new(data: Vec<f64>) -> Self {
+    pub fn new(data: Vec<f64>, shape: Vec<usize>) -> Self {
         Tensor { 
             data: data.iter().map(|x| Value::new(*x)).collect(), 
-            shape: vec![data.len(), 1],
+            shape
         }
     }
 
@@ -65,15 +65,15 @@ impl Tensor {
         out
     }
 
-    // consider 2D matrix multiplication only
+    // support 2D matrix multiplication only
     pub fn dot(&self, other: Tensor) -> Tensor {
-        let mut out = Tensor::new(vec![0.0; self.shape[1] * other.shape[1]]);
-        for i in 0..self.shape[1] {
+        let mut out = Tensor::new(vec![0.0; self.shape[0] * other.shape[1]], vec![self.shape[0], other.shape[1]]);
+        for i in 0..self.shape[0] {
             for j in 0..other.shape[1] {
-                out.data[i * other.shape[1] + j] = (0..self.shape[0]).map(|k| 
+                out.data[i * out.shape[1] + j] = (0..self.shape[1]).map(|k| 
                     self.data[i * self.shape[1] + k].clone() 
-                    * other.data[k * other.shape[1] + j].clone())
-                .sum();
+                    * other.data[k * other.shape[1] + j].clone()
+                ).sum();
             }
         }
         out
@@ -93,11 +93,11 @@ impl Add<Tensor> for Tensor {
 }
 impl Add<f64> for Tensor {
     type Output = Tensor;
-    fn add(self: Tensor, other: f64) -> Self::Output { self + Tensor::new(vec![other]) }
+    fn add(self: Tensor, other: f64) -> Self::Output { self + Tensor::new(vec![other], vec![1, 1]) }
 }
 impl Add<Tensor> for f64 {
     type Output = Tensor;
-    fn add(self: f64, other: Tensor) -> Self::Output { Tensor::new(vec![self]) + other }
+    fn add(self: f64, other: Tensor) -> Self::Output { Tensor::new(vec![self], vec![1, 1]) + other }
 }
 
 impl Sub<Tensor> for Tensor {
@@ -112,11 +112,11 @@ impl Sub<Tensor> for Tensor {
 }
 impl Sub<f64> for Tensor {
     type Output = Tensor;
-    fn sub(self: Tensor, other: f64) -> Self::Output { self + -Tensor::new(vec![other]) }
+    fn sub(self: Tensor, other: f64) -> Self::Output { self + -Tensor::new(vec![other], vec![1, 1]) }
 }
 impl Sub<Tensor> for f64 {
     type Output = Tensor;
-    fn sub(self: f64, other: Tensor) -> Self::Output { Tensor::new(vec![self]) + -other }
+    fn sub(self: f64, other: Tensor) -> Self::Output { Tensor::new(vec![self], vec![1, 1]) + -other }
 }
 
 // element-wise multiplication
@@ -132,11 +132,11 @@ impl Mul<Tensor> for Tensor {
 }
 impl Mul<f64> for Tensor {
     type Output = Tensor;
-    fn mul(self: Tensor, other: f64) -> Self::Output { self * Tensor::new(vec![other]) }
+    fn mul(self: Tensor, other: f64) -> Self::Output { self * Tensor::new(vec![other], vec![1, 1]) }
 }
 impl Mul<Tensor> for f64 {
     type Output = Tensor;
-    fn mul(self: f64, other: Tensor) -> Self::Output { Tensor::new(vec![self]) * other }
+    fn mul(self: f64, other: Tensor) -> Self::Output { Tensor::new(vec![self], vec![1, 1]) * other }
 }
 
 impl Div<Tensor> for Tensor {
@@ -151,11 +151,11 @@ impl Div<Tensor> for Tensor {
 }
 impl Div<f64> for Tensor {
     type Output = Tensor;
-    fn div(self: Tensor, other: f64) -> Self::Output { self * Tensor::new(vec![other]).pow(-1.0) }
+    fn div(self: Tensor, other: f64) -> Self::Output { self * Tensor::new(vec![other], vec![1, 1]).pow(-1.0) }
 }
 impl Div<Tensor> for f64 {
     type Output = Tensor; 
-    fn div(self: f64, other: Tensor) -> Self::Output { Tensor::new(vec![self]) * other.pow(-1.0) }
+    fn div(self: f64, other: Tensor) -> Self::Output { Tensor::new(vec![self], vec![1, 1]) * other.pow(-1.0) }
 }
 
 impl Neg for Tensor {
