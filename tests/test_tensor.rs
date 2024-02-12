@@ -17,7 +17,7 @@ fn test_tensor() {
 }
 
 #[test]
-fn test_tensor_matmul() {
+fn test_tensor_dot() {
     std::env::set_var("RUST_BACKTRACE", "1");
 
     let x = Tensor::new(vec![vec![1.0, 2.0, 3.0, 4.0]], vec![1, 4]);
@@ -39,4 +39,14 @@ fn test_tensor_matmul() {
     assert_eq!(r.grad(), vec![vec![1.0]]);
     assert_eq!(p.grad(), vec![vec![5.0], vec![6.0], vec![7.0], vec![8.0]]);
     assert_eq!(q.grad(), vec![vec![1.0], vec![2.0], vec![3.0], vec![4.0]]);
+
+    let a = Tensor::new(vec![vec![1.0, 2.0], vec![3.0, 4.0]], vec![2, 2]);
+    let b = Tensor::new(vec![vec![5.0]], vec![1, 1]);
+    let c = a.clone() * b.clone();
+    c.backward();
+
+    assert_eq!(c.data(), vec![vec![5.0, 10.0], vec![15.0, 20.0]]);
+    assert_eq!(c.grad(), vec![vec![1.0, 1.0], vec![1.0, 1.0]]);
+    assert_eq!(a.grad(), vec![vec![5.0, 5.0], vec![5.0, 5.0]]);
+    assert_eq!(b.grad(), vec![vec![10.0]]);
 }
