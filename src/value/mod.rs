@@ -1,7 +1,7 @@
 // TODO: delete value module and implement operations in tensor module
 
 // base operator (defined as itself):
-// add, mul, neg, pow, exp, relu
+// add, mul, neg, pow, exp, relu, log
 // more operator (defined as a combination of base operators):
 // sub, div, sigmoid, tanh
 
@@ -93,6 +93,12 @@ impl Value {
 
     pub fn tanh(&self) -> Value {
         let out = ((2.0 * Value(Rc::clone(&self.0))).exp() - 1.0) / ((2.0 * Value(Rc::clone(&self.0))).exp() + 1.0);
+        out
+    }
+
+    pub fn log(&self) -> Value {
+        let out = Value::new(self.data().ln());
+        out.0.borrow_mut().children.push((Value(Rc::clone(&self.0)), 1.0 / self.data()));
         out
     }
 }

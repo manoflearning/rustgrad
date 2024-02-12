@@ -25,6 +25,14 @@ impl Tensor {
         }
     }
 
+    pub fn log(&self) -> Tensor {
+        let out = Tensor {
+            data: self.data.iter().map(|x| x.clone().log()).collect(),
+            shape: self.shape.clone(),
+        };
+        out
+    }
+
     pub fn pow(&self, other: f64) -> Tensor {
         let out = Tensor {
             data: self.data.iter().map(|x| x.clone().pow(other)).collect(),
