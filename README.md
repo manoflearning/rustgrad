@@ -1,8 +1,6 @@
 # RustGrad
 
-RustGrad is a small deep learning framework developed in Rust. It currently features a slow, unoptimized implementation, focusing primarily on accurately delivering the intended functionality.
-
-It is a toy project for understanding neural network, but the long-term goal is to develop it into a practical and useful framework.
+RustGrad is a small deep learning framework developed in Rust. It currently features a slow, unoptimized implementation, focusing primarily on accurately delivering the intended functionality. It is a toy project for understanding neural network, but the long-term goal is to develop it into a practical and useful framework.
 
 ## Features
 
