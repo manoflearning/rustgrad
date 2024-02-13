@@ -31,8 +31,8 @@ pub struct Neuron {
 impl Neuron {
     pub fn new(nin: usize) -> Self {
         let mut rng = rand::thread_rng(); // TODO: fixed random seed
-        let w: Tensor = Tensor::new(vec![rng.gen_range(-1.0..1.0); nin], vec![1, nin]);
-        let b: Tensor = Tensor::new(vec![rng.gen_range(-1.0..1.0)], vec![1, 1]);
+        let w: Tensor = Tensor::new(vec![rng.gen_range(-0.01..0.01); nin], vec![1, nin]);
+        let b: Tensor = Tensor::new(vec![rng.gen_range(-0.01..0.01)], vec![1, 1]);
         Neuron { w, b }
     }
 }
