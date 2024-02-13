@@ -12,13 +12,14 @@ impl Tensor {
         assert_eq!(shape.len(), 2);
         assert_eq!(data.len(), shape[0]);
         assert_eq!(data[0].len(), shape[1]);
+        
         let mut out = Tensor {
             data: Vec::new(),
-            shape: shape.clone(),
+            shape,
         };
-        for i in 0..shape[0] {
-            let mut tmp = Vec::new();
-            for j in 0..shape[1] {
+        for i in 0..out.shape[0] {
+            let mut tmp: Vec<Value> = Vec::new();
+            for j in 0..out.shape[1] {
                 tmp.push(Value::new(data[i][j]));
             }
             out.data.push(tmp);
@@ -26,8 +27,8 @@ impl Tensor {
         out
     }
 
-    pub fn data(&self) -> Vec<Vec<f64>> { self.data.iter().map(|x| x.iter().map(|y| y.data()).collect()).collect() }
-    pub fn grad(&self) -> Vec<Vec<f64>> { self.data.iter().map(|x| x.iter().map(|y| y.grad()).collect()).collect() }
+    pub fn data(&self) -> Vec<Vec<f64>> { self.data.iter().map(|x| x.iter().map(|y| y.0.borrow().data).collect()).collect() }
+    pub fn grad(&self) -> Vec<Vec<f64>> { self.data.iter().map(|x| x.iter().map(|y| y.0.borrow().grad).collect()).collect() }
 
     pub fn backward(&self) {
         for i in self.data.iter() {
@@ -43,43 +44,38 @@ impl Tensor {
     }
 
     pub fn pow(&self, other: f64) -> Tensor {
-        let out = Tensor {
+        Tensor {
             data: self.data.iter().map(|x| x.iter().map(|y| y.pow(other)).collect()).collect(),
             shape: self.shape.clone(),
-        };
-        out
+        }
     }
 
     pub fn exp(&self) -> Tensor {
-        let out = Tensor {
+        Tensor {
             data: self.data.iter().map(|x| x.iter().map(|y| y.exp()).collect()).collect(),
             shape: self.shape.clone(),
-        };
-        out
+        }
     }
 
     pub fn relu(&self) -> Tensor {
-        let out = Tensor {
+        Tensor {
             data: self.data.iter().map(|x| x.iter().map(|y| y.relu()).collect()).collect(),
             shape: self.shape.clone(),
-        };
-        out
+        }
     }
 
     pub fn sigmoid(&self) -> Tensor {
-        let out = Tensor {
+        Tensor {
             data: self.data.iter().map(|x| x.iter().map(|y| y.sigmoid()).collect()).collect(),
             shape: self.shape.clone(),
-        };
-        out
+        }
     }
 
     pub fn tanh(&self) -> Tensor {
-        let out = Tensor {
+        Tensor {
             data: self.data.iter().map(|x| x.iter().map(|y| y.tanh()).collect()).collect(),
             shape: self.shape.clone(),
-        };
-        out
+        }
     }
 
     pub fn dot(&self, other: &Tensor) -> Tensor {
@@ -110,15 +106,33 @@ impl Tensor {
     }
 
     pub fn softmax(&self) -> Tensor {
-        let mut out = Tensor::new(vec![vec![0.0; self.shape[1]]; self.shape[0]], self.shape.clone());
+        let mut out: Tensor = Tensor::new(vec![vec![0.0; self.shape[1]]; self.shape[0]], self.shape.clone());
         for c in 0..self.shape[1] {
-            let mut tmp = Vec::new();
+            let mut tmp: Vec<Value> = Vec::new();
             for r in 0..self.shape[0] {
                 tmp.push(self.data[r][c].exp());
             }
             let sum: Value = tmp.iter().map(|x| x.clone()).sum();
+            let mut test_sum: f64 = 0.0;
             for r in 0..self.shape[0] {
                 out.data[r][c] = tmp[r].clone() / sum.clone();
+                test_sum += out.data[r][c].0.borrow().data;
+            }
+            if !(0.999 < test_sum && test_sum < 1.001) {
+                println!("sum: {}", test_sum);
+                assert!(0.999 < test_sum && test_sum < 1.001);
+            }
+        }
+        out
+    }
+
+    pub fn slice(&self, s: std::ops::Range<usize>) -> Tensor {
+        assert!(s.start < s.end);
+        assert!(s.end <= self.shape[1]);
+        let mut out = Tensor::new(vec![vec![0.0; s.end - s.start]; self.shape[0]], vec![self.shape[0], s.end - s.start]);
+        for i in 0..self.shape[0] {
+            for j in s.start..s.end {
+                out.data[i][j - s.start] = self.data[i][j].clone();
             }
         }
         out
@@ -133,11 +147,9 @@ impl Add<Tensor> for Tensor {
         let row_len = max(self.shape[0], other.shape[0]);
         let col_len = max(self.shape[1], other.shape[1]);
         let mut out = Tensor::new(vec![vec![0.0; col_len]; row_len], vec![row_len, col_len]);
-        for i in 0..row_len {
-            for j in 0..col_len {
-                out.data[i][j] = self.data[i % self.shape[0]][j % self.shape[1]].clone() + other.data[i % other.shape[0]][j % other.shape[1]].clone();
-            }
-        }
+        (0..row_len).for_each(|i| (0..col_len).for_each(|j| {
+            out.data[i][j] = self.data[i % self.shape[0]][j % self.shape[1]].clone() + other.data[i % other.shape[0]][j % other.shape[1]].clone();
+        }));
         out
     }
 }
@@ -156,11 +168,9 @@ impl Sub<Tensor> for Tensor {
         let row_len = max(self.shape[0], other.shape[0]);
         let col_len = max(self.shape[1], other.shape[1]);
         let mut out = Tensor::new(vec![vec![0.0; col_len]; row_len], vec![row_len, col_len]);
-        for i in 0..row_len {
-            for j in 0..col_len {
-                out.data[i][j] = self.data[i % self.shape[0]][j % self.shape[1]].clone() - other.data[i % other.shape[0]][j % other.shape[1]].clone();
-            }
-        }
+        (0..row_len).for_each(|i| (0..col_len).for_each(|j| {
+            out.data[i][j] = self.data[i % self.shape[0]][j % self.shape[1]].clone() - other.data[i % other.shape[0]][j % other.shape[1]].clone();
+        }));
         out
     }
 }
@@ -180,11 +190,9 @@ impl Mul<Tensor> for Tensor {
         let row_len = max(self.shape[0], other.shape[0]);
         let col_len = max(self.shape[1], other.shape[1]);
         let mut out = Tensor::new(vec![vec![0.0; col_len]; row_len], vec![row_len, col_len]);
-        for i in 0..row_len {
-            for j in 0..col_len {
-                out.data[i][j] = self.data[i % self.shape[0]][j % self.shape[1]].clone() * other.data[i % other.shape[0]][j % other.shape[1]].clone();
-            }
-        }
+        (0..row_len).for_each(|i| (0..col_len).for_each(|j| {
+            out.data[i][j] = self.data[i % self.shape[0]][j % self.shape[1]].clone() * other.data[i % other.shape[0]][j % other.shape[1]].clone();
+        }));
         out
     }
 }
@@ -203,11 +211,9 @@ impl Div<Tensor> for Tensor {
         let row_len = max(self.shape[0], other.shape[0]);
         let col_len = max(self.shape[1], other.shape[1]);
         let mut out = Tensor::new(vec![vec![0.0; col_len]; row_len], vec![row_len, col_len]);
-        for i in 0..row_len {
-            for j in 0..col_len {
-                out.data[i][j] = self.data[i % self.shape[0]][j % self.shape[1]].clone() / other.data[i % other.shape[0]][j % other.shape[1]].clone();
-            }
-        }
+        (0..row_len).for_each(|i| (0..col_len).for_each(|j| {
+            out.data[i][j] = self.data[i % self.shape[0]][j % self.shape[1]].clone() / other.data[i % other.shape[0]][j % other.shape[1]].clone();
+        }));
         out
     }
 }

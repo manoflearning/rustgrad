@@ -36,7 +36,7 @@ impl Value {
     pub fn data(&self) -> f64 { self.0.borrow().data }
     pub fn grad(&self) -> f64 { self.0.borrow().grad }
 
-    // pub fn clone(&self) -> Value { Value(Rc::clone(&self.0)) }
+    pub fn clone(&self) -> Value { Value(Rc::clone(&self.0)) }
 
     pub fn _backward(&self) {
         for (child, x) in self.0.borrow().children.iter() {
