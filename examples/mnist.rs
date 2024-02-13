@@ -89,6 +89,8 @@ fn get_test_acc(y_pred: &Tensor, y_test: &Tensor) -> f64 {
 }
 
 pub fn main() {
+    std::env::set_var("RUST_BACKTRACE", "1");
+
     let total_time_start: Instant = Instant::now();
 
     let (x_train, y_train, x_test, y_test) = fetch_mnist();
@@ -131,7 +133,7 @@ pub fn main() {
             
             for j in 0..y_pred.shape[1] {
                 let mut sum: f64 = 0.0;
-                for i in 0..y_pred.data.len() {
+                for i in 0..y_pred.shape[0] {
                     assert!(-0.001 <= y_pred.get(i, j).data() && y_pred.get(i, j).data() < 1.001);
                     sum += y_pred.get(i, j).data();
                 }

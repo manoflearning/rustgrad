@@ -155,7 +155,6 @@ impl Tensor {
                 println!("sum: {}", test_sum);
                 panic!("sum is not 1.0");
             }
-            else { println!("sum: {}", test_sum); }
         }
         out
     }
