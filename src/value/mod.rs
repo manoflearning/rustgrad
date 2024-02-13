@@ -18,13 +18,13 @@ pub struct RawValue {
 }
 
 #[derive(Clone)]
-pub struct Value(pub Rc<RefCell<RawValue>>);
+pub struct Value(pub Arc<RwLock<RawValue>>);
 
 pub static COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 impl Value {
     pub fn new(data: f64) -> Self {
-        Value(Rc::new(RefCell::new(RawValue {
+        Value(Arc::new(RwLock::new(RawValue {
             id: COUNTER.fetch_add(1, Ordering::Relaxed),
             data,
             grad: 0.0,
@@ -32,34 +32,34 @@ impl Value {
         })))
     }
 
-    pub fn id(&self) -> usize { self.0.borrow().id }
-    pub fn data(&self) -> f64 { self.0.borrow().data }
-    pub fn grad(&self) -> f64 { self.0.borrow().grad }
+    pub fn id(&self) -> usize { self.0.read().unwrap().id }
+    pub fn data(&self) -> f64 { self.0.read().unwrap().data }
+    pub fn grad(&self) -> f64 { self.0.read().unwrap().grad }
 
-    pub fn clone(&self) -> Value { Value(Rc::clone(&self.0)) }
+    pub fn clone(&self) -> Value { Value(Arc::clone(&self.0)) }
 
     pub fn _backward(&self) {
-        for (child, x) in self.0.borrow().children.iter() {
-            child.0.borrow_mut().grad += x * self.0.borrow().grad;
+        for (child, x) in self.0.read().unwrap().children.iter() {
+            child.0.write().unwrap().grad += x * self.0.read().unwrap().grad;
         }
     }
 
     pub fn backward(&self) {
-        self.0.borrow_mut().grad = 1.0;
+        self.0.write().unwrap().grad = 1.0;
             
         let mut topo: Vec<Value> = Vec::new();
         let mut visited: HashSet<usize> = HashSet::new();
 
         fn build_topo(v: Value, topo: &mut Vec<Value>, visited: &mut HashSet<usize>) {
             visited.insert(v.id());
-            for (child, _) in v.0.borrow().children.iter() {
+            for (child, _) in v.0.read().unwrap().children.iter() {
                 if !visited.contains(&child.id()) {
-                    build_topo(Value(Rc::clone(&child.0)), topo, visited);
+                    build_topo(Value(Arc::clone(&child.0)), topo, visited);
                 }
             }
-            topo.push(Value(Rc::clone(&v.0)));
+            topo.push(Value(Arc::clone(&v.0)));
         }
-        build_topo(Value(Rc::clone(&self.0)), &mut topo, &mut visited);
+        build_topo(Value(Arc::clone(&self.0)), &mut topo, &mut visited);
             
         topo.reverse();
 
@@ -70,35 +70,35 @@ impl Value {
 
     pub fn pow(&self, other: f64) -> Value {
         let out = Value::new(self.data().powf(other));
-        out.0.borrow_mut().children.push((Value(Rc::clone(&self.0)), other * self.data().powf(other - 1.0)));
+        out.0.write().unwrap().children.push((Value(Arc::clone(&self.0)), other * self.data().powf(other - 1.0)));
         out
     }
 
     pub fn exp(&self) -> Value {
         let out = Value::new(self.data().exp());
-        out.0.borrow_mut().children.push((Value(Rc::clone(&self.0)), self.data().exp()));
+        out.0.write().unwrap().children.push((Value(Arc::clone(&self.0)), self.data().exp()));
         out
     }
     
     pub fn relu(&self) -> Value {
         let out = Value::new(self.data().max(0.0));
-        out.0.borrow_mut().children.push((Value(Rc::clone(&self.0)), if self.data() > 0.0 { 1.0 } else { 0.0 }));
+        out.0.write().unwrap().children.push((Value(Arc::clone(&self.0)), if self.data() > 0.0 { 1.0 } else { 0.0 }));
         out
     }
 
     pub fn sigmoid(&self) -> Value {
-        let out = 1.0 / (1.0 + -Value(Rc::clone(&self.0)).exp());
+        let out = 1.0 / (1.0 + -Value(Arc::clone(&self.0)).exp());
         out
     }
 
     pub fn tanh(&self) -> Value {
-        let out = ((2.0 * Value(Rc::clone(&self.0))).exp() - 1.0) / ((2.0 * Value(Rc::clone(&self.0))).exp() + 1.0);
+        let out = ((2.0 * Value(Arc::clone(&self.0))).exp() - 1.0) / ((2.0 * Value(Arc::clone(&self.0))).exp() + 1.0);
         out
     }
 
     pub fn log(&self) -> Value {
         let out = Value::new(self.data().ln());
-        out.0.borrow_mut().children.push((Value(Rc::clone(&self.0)), 1.0 / self.data()));
+        out.0.write().unwrap().children.push((Value(Arc::clone(&self.0)), 1.0 / self.data()));
         out
     }
 }
@@ -112,13 +112,14 @@ impl Sum for Value {
 }
 
 use std::ops::{Add, Sub, Mul, Div, Neg};
+use std::sync::{Arc, RwLock};
 
 impl Add<Value> for Value {
     type Output = Value;
     fn add(self, other: Value) -> Self::Output {
         let out = Value::new(self.data() + other.data());
-        out.0.borrow_mut().children.push((Value(Rc::clone(&self.0)), 1.0));
-        out.0.borrow_mut().children.push((Value(Rc::clone(&other.0)), 1.0));
+        out.0.write().unwrap().children.push((Value(Arc::clone(&self.0)), 1.0));
+        out.0.write().unwrap().children.push((Value(Arc::clone(&other.0)), 1.0));
         out
     }
 }
@@ -148,8 +149,8 @@ impl Mul<Value> for Value {
     type Output = Value;
     fn mul(self: Value, other: Value) -> Self::Output {
         let out = Value::new(self.data() * other.data());
-        out.0.borrow_mut().children.push((Value(Rc::clone(&self.0)), other.data()));
-        out.0.borrow_mut().children.push((Value(Rc::clone(&other.0)), self.data()));
+        out.0.write().unwrap().children.push((Value(Arc::clone(&self.0)), other.data()));
+        out.0.write().unwrap().children.push((Value(Arc::clone(&other.0)), self.data()));
         out
     }
 }
@@ -179,7 +180,7 @@ impl Neg for Value {
     type Output = Value;
     fn neg(self) -> Self::Output {
         let out = Value::new(-self.data());
-        out.0.borrow_mut().children.push((Value(Rc::clone(&self.0)), -1.0));
+        out.0.write().unwrap().children.push((Value(Arc::clone(&self.0)), -1.0));
         out
     }
 }
