@@ -1,47 +1,13 @@
 extern crate rustgrad;
 use ndarray::prelude::*;
-use rustgrad::{Value, Tensor, NeuralNetwork};
+use rustgrad::{Value, Tensor, Layer, ReLU, Softmax, Linear, Model};
 use std::time::Instant;
 
 use mnist::*;
 
-pub fn cross_entropy_loss(predictions: &Tensor, labels: &Tensor) -> Tensor {
-    let mut out = Tensor::new(vec![vec![0.0; predictions.shape[1]]; 1], vec![1, predictions.shape[1]]);
-    for i in 0..predictions.shape[1] {
-        out.data[0][i] = -((0..predictions.shape[0]).map(|k| 
-            labels.data[k][i].clone() * predictions.data[k][i].log()
-        ).sum::<Value>());
-    }
-    out
-}
-
-fn count_correct(predictions: &Tensor, labels: &Tensor) -> usize {
-    let mut correct = 0;
-    for i in 0..predictions.data[0].len() {
-        let mut max_idx = 0;
-        let mut max_val = 0.0;
-        for j in 0..predictions.data.len() {
-            if predictions.data[j][i].data() > max_val {
-                max_val = predictions.data[j][i].data();
-                max_idx = j;
-            }
-        }
-        if labels.data[max_idx][i].data() == 1.0 {
-            correct += 1;
-        }
-    }
-    correct
-}
-
-pub fn main() {
-    // std::env::set_var("RUST_BACKTRACE", "1");
-
-    let total_time_start: Instant = Instant::now();
-
+fn fetch_mnist() -> (Tensor, Tensor, Tensor, Tensor) {
     // load MNIST dataset (how to use: https://docs.rs/mnist/latest/mnist/)
     // TODO: implement dataloader without any dependencies
-    let train_size = 600;
-    let test_size = 100;
 
     let Mnist {
         trn_img,
@@ -54,51 +20,93 @@ pub fn main() {
         .label_format_digit()
         .finalize();
 
-    let _train_data = Array3::from_shape_vec((60_000, 28, 28), trn_img)
-        .expect("Error converting images to Array3 struct")
-        .map(|x| *x as f64 / 256.0);
-    let _train_labels: Array2<f64> = Array2::from_shape_vec((60_000, 1), trn_lbl)
-        .expect("Error converting training labels to Array2 struct")
-        .map(|x| *x as f64);
-    let _test_data = Array3::from_shape_vec((10_000, 28, 28), tst_img)
-        .expect("Error converting images to Array3 struct")
-        .map(|x| *x as f64 / 256.0);
-    let _test_labels: Array2<f64> = Array2::from_shape_vec((10_000, 1), tst_lbl)
-        .expect("Error converting testing labels to Array2 struct")
-        .map(|x| *x as f64);
+    let _x_train = Array3::from_shape_vec((60_000, 28, 28), trn_img)
+    .expect("Error converting images to Array3 struct")
+    .map(|x| *x as f64 / 256.0);
+    
+    let _x_test = Array3::from_shape_vec((10_000, 28, 28), tst_img)
+    .expect("Error converting images to Array3 struct")
+    .map(|x| *x as f64 / 256.0);
+    
+    let _y_train = Array2::from_shape_vec((60_000, 1), trn_lbl)
+    .expect("Error converting labels to Array2 struct");
+    
+    let _y_test: ArrayBase<ndarray::OwnedRepr<u8>, Dim<[usize; 2]>> = Array2::from_shape_vec((10_000, 1), tst_lbl)
+    .expect("Error converting labels to Array2 struct");
 
-    let mut train_data = Tensor::new(vec![vec![0.0; train_size]; 28 * 28], vec![28 * 28, train_size]);
-    let mut train_labels = Tensor::new(vec![vec![0.0; train_size]; 10], vec![10, train_size]);
+    let mut x_train = Tensor::new(vec![0.0; 784 * 60_000], vec![784, 60_000]);
+    let mut x_test = Tensor::new(vec![0.0; 28 * 28 * 10_000], vec![28 * 28, 10_000]);
+    let mut y_train = Tensor::new(vec![0.0; 10 * 60_000], vec![10, 60_000]);
+    let mut y_test = Tensor::new(vec![0.0; 10 * 10_000], vec![10, 10_000]);
 
-    for i in 0..train_size {
-        for j in 0..28 * 28 {
-            train_data.data[j][i] = Value::new(_train_data[[i, j / 28, j % 28]]);
+    for i in 0..60_000 {
+        for j in 0..784 {
+            x_train.set(j, i, Value::new(_x_train[[i, j / 28, j % 28]]));
         }
-        train_labels.data[_train_labels[[i, 0]] as usize][i] = Value::new(1.0);
+        y_train.set(_y_train[[i, 0]] as usize, i, Value::new(1.0));
+    }
+    for i in 0..10_000 {
+        for j in 0..784 {
+            x_test.set(j, i, Value::new(_x_test[[i, j / 28, j % 28]]));
+        }
+        y_test.set(_y_test[[i, 0]] as usize, i, Value::new(1.0));
     }
 
-    let mut test_data = Tensor::new(vec![vec![0.0; test_size]; 28 * 28], vec![28 * 28, test_size]);
-    let mut test_labels = Tensor::new(vec![vec![0.0; test_size]; 10], vec![10, test_size]);
+    (x_train, y_train, x_test, y_test)
+}
 
-    for i in 0..test_size {
-        for j in 0..28 * 28 {
-            test_data.data[j][i] = Value::new(_test_data[[i, j / 28, j % 28]]);
-        }
-        test_labels.data[_test_labels[[i, 0]] as usize][i] = Value::new(1.0);
+fn cross_entropy_loss(y_pred: &Tensor, y: &Tensor) -> Tensor {
+    let mut out = Tensor::new(vec![0.0; y_pred.shape[1]], vec![1, y_pred.shape[1]]);
+    for i in 0..y_pred.shape[1] {
+        out.set(0, i, 
+            -((0..y_pred.shape[0]).map(|k| 
+                y.get(k, i) * y_pred.get(k, i).log()
+            ).sum::<Value>())
+        );
     }
+    out
+}
 
+fn get_test_acc(y_pred: &Tensor, y_test: &Tensor) -> f64 {
+    let mut correct = 0;
+    let mut total = 0;
+
+    for i in 0..y_pred.shape[1] {
+        let mut max_idx = 0;
+        let mut max_val = 0.0;
+        for j in 0..y_pred.shape[0] {
+            if y_pred.get(j, i).data() > max_val {
+                max_val = y_pred.get(j, i).data();
+                max_idx = j;
+            }
+        }
+        if y_test.get(max_idx, i).data() == 1.0 {
+            correct += 1;
+        }
+        total += 1;
+    }
+    correct as f64 / total as f64
+}
+
+pub fn main() {
+    let total_time_start: Instant = Instant::now();
+
+    let (x_train, y_train, x_test, y_test) = fetch_mnist();
     println!("Data Loading Done");
+
+    let train_size: usize = 60_000;
 
     // parameters
     let learning_rate: f64 = 0.001;
-    let n_epochs: i32 = 15;
-    let batch_size: usize = 5;
+    let n_epochs: usize = 15;
+    let batch_size: usize = 50;
 
-    let img_size: usize = 28 * 28;
-    let n_classes: usize = 10;
-
-    // initialize the neural network
-    let network = NeuralNetwork::new(img_size, vec![128, 64, n_classes]);
+    // initialize model
+    let model = Model::new(vec![
+        Box::new(Linear::new(784, 128)), Box::new(ReLU),
+        Box::new(Linear::new(128, 64)), Box::new(ReLU),
+        Box::new(Linear::new(64, 10)), Box::new(Softmax),
+    ]);
 
     // training loop
     for epoch in 0..n_epochs {
@@ -110,33 +118,33 @@ pub fn main() {
             let batch_time_start: Instant = Instant::now();
 
             let start = i * batch_size;
-            let end = (i + 1) * batch_size; // [start, end)
-            let batch_data: Tensor = train_data.slice(start..end);
-            let batch_labels: Tensor = train_labels.slice(start..end);
+            let end = (i + 1) * batch_size;
+            let batch_data: Tensor = x_train.slice(start..end);
+            let batch_labels: Tensor = y_train.slice(start..end);
             
             time_sum[0] += (Instant::now() - batch_time_start).as_secs_f64();
 
             // forward pass
             let forward_time_start: Instant = Instant::now();
 
-            let predictions: Tensor = network.forward(&batch_data);
+            let y_pred: Tensor = model.forward(&batch_data);
             
-            for j in 0..predictions.data[0].len() {
+            for j in 0..y_pred.shape[1] {
                 let mut sum: f64 = 0.0;
-                for i in 0..predictions.data.len() {
-                    assert!(-0.001 <= predictions.data[i][j].data() && predictions.data[i][j].data() < 1.001);
-                    sum += predictions.data[i][j].data();
+                for i in 0..y_pred.data.len() {
+                    assert!(-0.001 <= y_pred.get(i, j).data() && y_pred.get(i, j).data() < 1.001);
+                    sum += y_pred.get(i, j).data();
                 }
 
                 if !(0.999 < sum && sum < 1.001) {
                     println!("sum: {}", sum);
-                    println!("shape: {:?}", predictions.shape);
+                    println!("shape: {:?}", y_pred.shape);
                     
-                    for i in 0..predictions.data.len() {
-                        print!("{:.4} ", predictions.data[i][j].data());
+                    for i in 0..y_pred.data.len() {
+                        print!("{:.4} ", y_pred.get(i, j).data());
                     }
 
-                    assert!(0.999 < sum && sum < 1.001);
+                    panic!("sum is not 1.0");
                 }
             }
 
@@ -145,12 +153,12 @@ pub fn main() {
             // calculate loss
             let loss_time_start: Instant = Instant::now();
 
-            let loss: Tensor = cross_entropy_loss(&predictions, &batch_labels);
-            (0..loss.data.len()).for_each(|i| (0..loss.data[i].len()).for_each(|j| {
-                assert!(loss.data[i][j].data() >= 0.0);
+            let loss: Tensor = cross_entropy_loss(&y_pred, &batch_labels);
+            (0..loss.shape[0]).for_each(|i| (0..loss.shape[1]).for_each(|j| {
+                assert!(loss.get(i, j).data() >= 0.0);
             }));
 
-            let cost: Value = loss.data.iter().map(|x| x.iter().map(|y| y.clone()).sum()).sum::<Value>();
+            let cost: Value = loss.data.iter().map(|x| x.clone()).sum();
             cost_sum += cost.data();
 
             time_sum[2] += (Instant::now() - loss_time_start).as_secs_f64();
@@ -158,32 +166,21 @@ pub fn main() {
             // backpropagation and weight update
             let backward_time_start: Instant = Instant::now();
 
-            network.zerograd();
-            cost.backward(); // or loss.backward() ??
-            network.update_weights(learning_rate);
+            model.zerograd();
+            cost.backward();
+            model.update_weights(learning_rate);
 
             time_sum[3] += (Instant::now() - backward_time_start).as_secs_f64();
         }
         cost_sum /= train_size as f64;
 
-        println!("Epoch {}: Loss {:.4} Time: {:.4}s (batch: {:.4}s, forward: {:.4}s, loss: {:.4}s, backward: {:.4}s)", epoch, cost_sum, time_sum.iter().sum::<f64>(), time_sum[0], time_sum[1], time_sum[2], time_sum[3]);
+        println!("Epoch {:5}: Loss {:5.2} Time: {:5.2}s (batch: {:5.2}s, forward: {:5.2}s, loss: {:5.2}s, backward: {:.4}s)", 
+        epoch, cost_sum, time_sum.iter().sum::<f64>(), time_sum[0], time_sum[1], time_sum[2], time_sum[3]);
     }
 
     // test the trained model
-    let mut correct = 0;
-    let mut total = 0;
+    let accuracy = get_test_acc(&model.forward(&x_test), &y_test);
+    println!("Test Accuracy: {:5.2}%", accuracy * 100.0);
 
-    for i in 0..test_size / batch_size {
-        let start = i * batch_size;
-        let end = (i + 1) * batch_size;
-        let batch_data: Tensor = test_data.slice(start..end);
-        let batch_labels: Tensor = test_labels.slice(start..end);
-        let test_predictions = network.forward(&batch_data);
-        correct += count_correct(&test_predictions, &batch_labels);
-        total += batch_size;
-    }
-    let accuracy = correct as f64 / total as f64;
-    println!("Test Accuracy: {:.2}%", accuracy * 100.0);
-
-    println!("Total Time: {:.4}s", (Instant::now() - total_time_start).as_secs_f64());
+    println!("Total Time: {:5.2}s", (Instant::now() - total_time_start).as_secs_f64());
 }
