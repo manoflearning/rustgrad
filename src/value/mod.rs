@@ -7,8 +7,6 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashSet;
-use std::rc::Rc;
-use std::cell::RefCell;
 
 pub struct RawValue {
     pub id: usize,
