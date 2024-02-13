@@ -2,7 +2,7 @@ extern crate rustgrad;
 use rustgrad::Value;
 
 #[test]
-fn test_value_sanity_check() {
+fn test_value() {
     let x: Value = Value::new(-4.0);
     let z: Value = 2.0 * x.clone() + 2.0 + x.clone();
     let q: Value = z.relu() + z.clone() * x.clone();
