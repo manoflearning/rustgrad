@@ -1,53 +1,67 @@
 use crate::tensor::Tensor;
 use rand::Rng;
 
+pub trait Layer {
+    fn forward(&self, x: &Tensor) -> Tensor;
+    fn parameters(&self) -> Vec<Tensor>;
+    fn zerograd(&self) {
+        for tensor in self.parameters().iter() {
+            for i in tensor.data.iter() {
+                i.0.write().unwrap().grad = 0.0;
+            }
+        }
+    }
+}
+
+pub struct ReLU;
+impl Layer for ReLU {
+    fn forward(&self, x: &Tensor) -> Tensor { x.relu() }
+    fn parameters(&self) -> Vec<Tensor> { vec![] }
+}
+pub struct Softmax;
+impl Layer for Softmax {
+    fn forward(&self, x: &Tensor) -> Tensor { x.softmax() }
+    fn parameters(&self) -> Vec<Tensor> { vec![] }
+}
+
 pub struct Neuron {
     pub w: Tensor,
     pub b: Tensor,
-    pub act: fn(&Tensor) -> Tensor,
 }
-
 impl Neuron {
-    pub fn new(nin: usize, act: fn(&Tensor) -> Tensor) -> Self {
+    pub fn new(nin: usize) -> Self {
         let mut rng = rand::thread_rng(); // TODO: fixed random seed
-
-        let w: Tensor = Tensor::new(vec![(0..nin).map(|_| rng.gen_range(-1.0..1.0)).collect()], vec![1, nin]);
-        let b: Tensor = Tensor::new(vec![vec![rng.gen_range(-1.0..1.0)]], vec![1, 1]);
-        Neuron { w, b, act }
-    }
-    
-    pub fn forward(&self, x: &Tensor) -> Tensor {
-        let out: Tensor = self.w.dot(&x) + self.b.clone();
-        (self.act)(&out)
-    }
-
-    pub fn parameters(&self) -> Vec<Tensor> {
-        let out: Vec<Tensor> = vec![self.w.clone(), self.b.clone()];
-        out
+        let w: Tensor = Tensor::new(vec![rng.gen_range(-1.0..1.0); nin], vec![1, nin]);
+        let b: Tensor = Tensor::new(vec![rng.gen_range(-1.0..1.0)], vec![1, 1]);
+        Neuron { w, b }
     }
 }
+impl Layer for Neuron {
+    fn forward(&self, x: &Tensor) -> Tensor { self.w.dot(&x) + self.b.clone() }
+    fn parameters(&self) -> Vec<Tensor> { vec![self.w.clone(), self.b.clone()] }
+}
 
-pub struct Layer {
+pub struct Linear {
     pub neurons: Vec<Neuron>,
 }
-
-impl Layer {
-    pub fn new(nin: usize, nout: usize, act: fn(&Tensor) -> Tensor) -> Self {
-        let neurons: Vec<Neuron> = (0..nout).map(|_| Neuron::new(nin, act)).collect();
-        Layer { neurons }
+impl Linear {
+    pub fn new(nin: usize, nout: usize) -> Self {
+        let neurons: Vec<Neuron> = (0..nout).map(|_| Neuron::new(nin)).collect();
+        Linear { neurons }
     }
-    
-    pub fn forward(&self, x: &Tensor) -> Tensor {
-        let mut out: Tensor = Tensor::new(vec![vec![0.0; x.shape[1]]; self.neurons.len()], vec![self.neurons.len(), x.shape[1]]);
+}
+impl Layer for Linear {
+    fn forward(&self, x: &Tensor) -> Tensor {
+        let mut out: Tensor = Tensor::new(vec![0.0; x.shape[1] * self.neurons.len()], vec![self.neurons.len(), x.shape[1]]);
         for i in 0..self.neurons.len() {
+            let temp = self.neurons[i].forward(x);
             for j in 0..x.shape[1] {
-                out.data[i][j] = self.neurons[i].forward(x).data[0][j].clone();
+                out.set(i, j, temp.get(0, j));
             }
         }
         out
     }
-
-    pub fn parameters(&self) -> Vec<Tensor> {
+    fn parameters(&self) -> Vec<Tensor> {
         let mut out = Vec::new();
         for neuron in self.neurons.iter() {
             for param in neuron.parameters().iter() {
@@ -58,32 +72,43 @@ impl Layer {
     }
 }
 
-pub struct NeuralNetwork {
-    pub layers: Vec<Layer>,
-}
+// pub struct Conv2d {
+//     pub w: Tensor,
+//     pub b: Tensor,
+//     pub kernel_size: usize,
+//     pub stride: usize,
+//     pub padding: usize,
+//     pub bias: bool,
+// }
+// impl Conv2d {
+//     pub fn new(in_channels: usize, out_channels: usize, kernel_size: usize) -> Self {
+//         let mut rng = rand::thread_rng(); // TODO: fixed random seed       
+//     }
+// }
 
-impl NeuralNetwork {
-    pub fn new(nin: usize, nouts: Vec<usize>) -> Self {
-        let mut layers: Vec<Layer> = Vec::new();
-        for i in 0..nouts.len() {
-            if i == 0 {
-                layers.push(Layer::new(nin, nouts[i], Tensor::relu));
-            } else {
-                layers.push(Layer::new(nouts[i - 1], nouts[i], Tensor::relu));
+pub struct Model {
+    pub layers: Vec<Box<dyn Layer>>,
+}
+impl Model {
+    pub fn new(layers: Vec<Box<dyn Layer>>) -> Self { Model { layers } }
+    pub fn update_weights(&self, learning_rate: f64) {
+        for tensor in self.parameters().iter() {
+            for i in tensor.data.iter() {
+                let grad = i.0.read().unwrap().grad;
+                i.0.write().unwrap().data -= learning_rate * grad;
             }
         }
-        NeuralNetwork { layers }
     }
-
-    pub fn forward(&self, x: &Tensor) -> Tensor {
+}
+impl Layer for Model {
+    fn forward(&self, x: &Tensor) -> Tensor {
         let mut out: Tensor = x.clone();
         for layer in self.layers.iter() {
             out = layer.forward(&out);
         }
-        out.softmax()
+        out
     }
-
-    pub fn parameters(&self) -> Vec<Tensor> {
+    fn parameters(&self) -> Vec<Tensor> {
         let mut out = Vec::new();
         for layer in self.layers.iter() {
             for param in layer.parameters().iter() {
@@ -91,26 +116,5 @@ impl NeuralNetwork {
             }
         }
         out
-    }
-
-    pub fn zerograd(&self) {
-        for tensor in self.parameters().iter() {
-            for i in tensor.data.iter() {
-                for j in i.iter() {
-                    j.0.borrow_mut().grad = 0.0;
-                }
-            }
-        }
-    }
-
-    pub fn update_weights(&self, learning_rate: f64) {
-        for tensor in self.parameters().iter() {
-            for i in tensor.data.iter() {
-                for j in i.iter() {
-                    let grad = j.0.borrow().grad;
-                    j.0.borrow_mut().data -= learning_rate * grad;
-                }
-            }
-        }
     }
 }
