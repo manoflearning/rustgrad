@@ -4,3 +4,4 @@ mod nn;
 
 pub use value::Value;
 pub use tensor::Tensor;
+pub use nn::NeuralNetwork;
