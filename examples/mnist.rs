@@ -2,6 +2,7 @@ extern crate rustgrad;
 use ndarray::prelude::*;
 use rustgrad::{Value, Tensor, Layer, ReLU, Softmax, Linear, Model};
 use std::time::Instant;
+use std::sync::{Arc, RwLock};
 
 use mnist::*;
 
@@ -34,25 +35,32 @@ fn fetch_mnist() -> (Tensor, Tensor, Tensor, Tensor) {
     let _y_test: ArrayBase<ndarray::OwnedRepr<u8>, Dim<[usize; 2]>> = Array2::from_shape_vec((10_000, 1), tst_lbl)
     .expect("Error converting labels to Array2 struct");
 
-    let mut x_train = Tensor::new(vec![0.0; 784 * 60_000], vec![784, 60_000]);
-    let mut x_test = Tensor::new(vec![0.0; 28 * 28 * 10_000], vec![28 * 28, 10_000]);
-    let mut y_train = Tensor::new(vec![0.0; 10 * 60_000], vec![10, 60_000]);
-    let mut y_test = Tensor::new(vec![0.0; 10 * 10_000], vec![10, 10_000]);
+    let x_train = Arc::new(RwLock::new(Tensor::new(vec![0.0; 784 * 60_000], vec![784, 60_000])));
+    let x_test = Arc::new(RwLock::new(Tensor::new(vec![0.0; 28 * 28 * 10_000], vec![28 * 28, 10_000])));
+    let y_train = Arc::new(RwLock::new(Tensor::new(vec![0.0; 10 * 60_000], vec![10, 60_000])));
+    let y_test = Arc::new(RwLock::new(Tensor::new(vec![0.0; 10 * 10_000], vec![10, 10_000])));
 
-    for i in 0..60_000 {
-        for j in 0..784 {
-            x_train.set(j, i, Value::new(_x_train[[i, j / 28, j % 28]]));
-        }
-        y_train.set(_y_train[[i, 0]] as usize, i, Value::new(1.0));
-    }
-    for i in 0..10_000 {
-        for j in 0..784 {
-            x_test.set(j, i, Value::new(_x_test[[i, j / 28, j % 28]]));
-        }
-        y_test.set(_y_test[[i, 0]] as usize, i, Value::new(1.0));
-    }
+    (0..60_000).for_each(|i| {
+        (0..784).for_each(|j| {
+            let hash_num = x_train.read().unwrap().hash(&[j, i]);
+            x_train.write().unwrap().data[hash_num] = Value::new(_x_train[[i, j / 28, j % 28]]);
+        });
+        let hash_num = y_train.read().unwrap().hash(&[_y_train[[i, 0]] as usize, i]);
+        y_train.write().unwrap().data[hash_num] = Value::new(1.0);
+    });
+    (0..10_000).for_each(|i| {
+        (0..784).for_each(|j| {
+            let hash_num = x_test.read().unwrap().hash(&[j, i]);
+            x_test.write().unwrap().data[hash_num] = Value::new(_x_test[[i, j / 28, j % 28]]);
+        });
+        let hash_num = y_test.read().unwrap().hash(&[_y_test[[i, 0]] as usize, i]);
+        y_test.write().unwrap().data[hash_num] = Value::new(1.0);
+    });
 
-    (x_train, y_train, x_test, y_test)
+    (Arc::try_unwrap(x_train).unwrap().into_inner().unwrap(),
+    Arc::try_unwrap(y_train).unwrap().into_inner().unwrap(),
+    Arc::try_unwrap(x_test).unwrap().into_inner().unwrap(),
+    Arc::try_unwrap(y_test).unwrap().into_inner().unwrap())
 }
 
 fn cross_entropy_loss(y_pred: &Tensor, y: &Tensor) -> Tensor {
@@ -93,22 +101,25 @@ pub fn main() {
 
     let total_time_start: Instant = Instant::now();
 
+    let data_loading_time_start: Instant = Instant::now();
     let (x_train, y_train, x_test, y_test) = fetch_mnist();
-    println!("Data Loading Done");
+    println!("Data Loading Done \t\t\t| Time: {:5.2}s", (Instant::now() - data_loading_time_start).as_secs_f64());
 
-    let train_size: usize = 60_000;
+    let train_size: usize = 10;
 
     // parameters
     let learning_rate: f64 = 0.001;
     let n_epochs: usize = 15;
-    let batch_size: usize = 50;
+    let batch_size: usize = 10;
 
     // initialize model
+    let model_time_start: Instant = Instant::now();
     let model = Model::new(vec![
         Box::new(Linear::new(784, 128)), Box::new(ReLU),
         Box::new(Linear::new(128, 64)), Box::new(ReLU),
         Box::new(Linear::new(64, 10)), Box::new(Softmax),
     ]);
+    println!("Model Initialization Done \t| Time: {:5.2}s", (Instant::now() - model_time_start).as_secs_f64());
 
     // training loop
     for epoch in 0..n_epochs {
@@ -176,13 +187,14 @@ pub fn main() {
         }
         cost_sum /= train_size as f64;
 
-        println!("Epoch {:5}: Loss {:5.2} Time: {:5.2}s (batch: {:5.2}s, forward: {:5.2}s, loss: {:5.2}s, backward: {:.4}s)", 
+        println!("Epoch {:5}, Loss {:5.2} \t| Time: {:5.2}s (batch: {:5.2}s, forward: {:5.2}s, loss: {:5.2}s, backward: {:.4}s)", 
         epoch, cost_sum, time_sum.iter().sum::<f64>(), time_sum[0], time_sum[1], time_sum[2], time_sum[3]);
     }
 
     // test the trained model
+    let accuracy_time_start: Instant = Instant::now();
     let accuracy = get_test_acc(&model.forward(&x_test), &y_test);
-    println!("Test Accuracy: {:5.2}%", accuracy * 100.0);
+    println!("Test Accuracy: {:5.2}% \t\t| Time: {:5.2}s", accuracy * 100.0, (Instant::now() - accuracy_time_start).as_secs_f64());
 
-    println!("Total Time: {:5.2}s", (Instant::now() - total_time_start).as_secs_f64());
+    println!("\t\t\t\t\t\t\t| Time: {:5.2}s", (Instant::now() - total_time_start).as_secs_f64());
 }
