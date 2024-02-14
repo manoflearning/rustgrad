@@ -7,7 +7,6 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashSet;
-use rayon::prelude::*;
 use std::ops::{Add, Sub, Mul, Div, Neg};
 use std::sync::{Arc, RwLock};
 
@@ -38,10 +37,9 @@ impl Value {
     pub fn data(&self) -> f64 { self.0.read().unwrap().data }
     pub fn grad(&self) -> f64 { self.0.read().unwrap().grad }
 
-    // pub fn clone(&self) -> Value { Value(Arc::clone(&self.0)) }
-
     pub fn _backward(&self) {
-        self.0.read().unwrap().children.par_iter().for_each(|(child, x)| {
+        // each value has at most 2 children, so do not use par_iter
+        self.0.read().unwrap().children.iter().for_each(|(child, x)| {
             child.0.write().unwrap().grad += x * self.0.read().unwrap().grad;
         });
     }

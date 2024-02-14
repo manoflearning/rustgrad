@@ -4,6 +4,7 @@ use std::sync::{Arc, RwLock};
 use std::cmp::max;
 use std::ops::{Add, Div, Mul, Neg, Sub};
 
+// TODO: redifine tensor operations using ndarray, simd
 // TODO: support 1D, 3D, 4D ... tensors
 
 #[derive(Clone, Debug)]
