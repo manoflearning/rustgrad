@@ -111,7 +111,7 @@ pub fn main() {
     // parameters
     let learning_rate: f64 = 0.001;
     let n_epochs: usize = 15;
-    let batch_size: usize = 64;
+    let batch_size: usize = 128;
 
     // initialize model
     let model_time_start: Instant = Instant::now();
@@ -171,12 +171,15 @@ pub fn main() {
 
         println!("Epoch {:5}, Loss {:5.2} \t| Time: {:7.2}s (batch: {:5.2}s, forward: {:5.2}s, loss: {:5.2}s, backward: {:.4}s)", epoch, cost_sum, time_sum.iter().sum::<f64>(), time_sum[0], time_sum[1], time_sum[2], time_sum[3]);
     }
+    
     println!("Training Done \t\t\t| Time: {:7.2}s", (Instant::now() - trainig_time_start).as_secs_f64());
 
     // test the trained model
     let accuracy_time_start: Instant = Instant::now();
+
     let y_pred = model.forward(&x_test);
     let accuracy = get_test_acc(&y_pred, &y_test);
+    
     println!("Test Accuracy: {:5.2}% \t\t| Time: {:7.2}s", accuracy * 100.0, (Instant::now() - accuracy_time_start).as_secs_f64());
 
     println!("All Process Done \t\t| Time: {:7.2}s", (Instant::now() - total_time_start).as_secs_f64());
