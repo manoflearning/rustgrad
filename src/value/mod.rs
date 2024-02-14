@@ -7,7 +7,11 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::collections::HashSet;
+use rayon::prelude::*;
+use std::ops::{Add, Sub, Mul, Div, Neg};
+use std::sync::{Arc, RwLock};
 
+#[derive(Clone, Debug)]
 pub struct RawValue {
     pub id: usize,
     pub data: f64,
@@ -15,7 +19,7 @@ pub struct RawValue {
     pub children: Vec<(Value, f64)>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Value(pub Arc<RwLock<RawValue>>);
 
 pub static COUNTER: AtomicUsize = AtomicUsize::new(1);
@@ -34,20 +38,19 @@ impl Value {
     pub fn data(&self) -> f64 { self.0.read().unwrap().data }
     pub fn grad(&self) -> f64 { self.0.read().unwrap().grad }
 
-    pub fn clone(&self) -> Value { Value(Arc::clone(&self.0)) }
+    // pub fn clone(&self) -> Value { Value(Arc::clone(&self.0)) }
 
     pub fn _backward(&self) {
-        for (child, x) in self.0.read().unwrap().children.iter() {
+        self.0.read().unwrap().children.par_iter().for_each(|(child, x)| {
             child.0.write().unwrap().grad += x * self.0.read().unwrap().grad;
-        }
+        });
     }
 
-    pub fn backward(&self) {
+    pub fn backward(&self) { // TODO: optimize
         self.0.write().unwrap().grad = 1.0;
-            
+        
         let mut topo: Vec<Value> = Vec::new();
         let mut visited: HashSet<usize> = HashSet::new();
-
         fn build_topo(v: Value, topo: &mut Vec<Value>, visited: &mut HashSet<usize>) {
             visited.insert(v.id());
             for (child, _) in v.0.read().unwrap().children.iter() {
@@ -58,12 +61,9 @@ impl Value {
             topo.push(Value(Arc::clone(&v.0)));
         }
         build_topo(Value(Arc::clone(&self.0)), &mut topo, &mut visited);
-            
-        topo.reverse();
 
-        for v in topo.iter() {
-            v._backward();
-        }
+        topo.reverse();
+        for v in topo.iter() { v._backward(); }
     }
 
     pub fn pow(&self, other: f64) -> Value {
@@ -85,13 +85,11 @@ impl Value {
     }
 
     pub fn sigmoid(&self) -> Value {
-        let out = 1.0 / (1.0 + -Value(Arc::clone(&self.0)).exp());
-        out
+        1.0 / (1.0 + -Value(Arc::clone(&self.0)).exp())
     }
 
     pub fn tanh(&self) -> Value {
-        let out = ((2.0 * Value(Arc::clone(&self.0))).exp() - 1.0) / ((2.0 * Value(Arc::clone(&self.0))).exp() + 1.0);
-        out
+        ((2.0 * Value(Arc::clone(&self.0))).exp() - 1.0) / ((2.0 * Value(Arc::clone(&self.0))).exp() + 1.0)
     }
 
     pub fn log(&self) -> Value {
@@ -104,13 +102,9 @@ impl Value {
 use std::iter::Sum;
 impl Sum for Value {
     fn sum<I: Iterator<Item = Value>>(iter: I) -> Self {
-        let out: Value = iter.fold(Value::new(0.0), |acc, value| acc + value);
-        out
+        iter.fold(Value::new(0.0), |acc, value| acc + value)
     }
 }
-
-use std::ops::{Add, Sub, Mul, Div, Neg};
-use std::sync::{Arc, RwLock};
 
 impl Add<Value> for Value {
     type Output = Value;

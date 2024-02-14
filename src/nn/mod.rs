@@ -1,15 +1,17 @@
 use crate::tensor::Tensor;
+use rayon::prelude::*;
 use rand::Rng;
+use std::sync::{Arc, RwLock};
 
 pub trait Layer {
     fn forward(&self, x: &Tensor) -> Tensor;
     fn parameters(&self) -> Vec<Tensor>;
     fn zerograd(&self) {
-        for tensor in self.parameters().iter() {
+        self.parameters().par_iter().for_each(|tensor| {
             for i in tensor.data.iter() {
                 i.0.write().unwrap().grad = 0.0;
             }
-        }
+        });
     }
 }
 
@@ -37,7 +39,7 @@ impl Neuron {
     }
 }
 impl Layer for Neuron {
-    fn forward(&self, x: &Tensor) -> Tensor { self.w.dot(&x) + self.b.clone() }
+    fn forward(&self, x: &Tensor) -> Tensor { self.w.dot(x) + self.b.clone() }
     fn parameters(&self) -> Vec<Tensor> { vec![self.w.clone(), self.b.clone()] }
 }
 
@@ -52,23 +54,24 @@ impl Linear {
 }
 impl Layer for Linear {
     fn forward(&self, x: &Tensor) -> Tensor {
-        let mut out: Tensor = Tensor::new(vec![0.0; x.shape[1] * self.neurons.len()], vec![self.neurons.len(), x.shape[1]]);
-        for i in 0..self.neurons.len() {
-            let temp = self.neurons[i].forward(x);
+        let out = Arc::new(RwLock::new(Tensor::new(vec![0.0; x.shape[1] * self.neurons.len()], vec![self.neurons.len(), x.shape[1]])));
+        self.neurons.iter().enumerate().for_each(|(i, neuron)| {
+            let temp = neuron.forward(x);
             for j in 0..x.shape[1] {
-                out.set(i, j, temp.get(0, j));
+                let hash_num = out.read().unwrap().hash(&[i, j]);
+                out.write().unwrap().data[hash_num] = temp.get(0, j);
             }
-        }
-        out
+        });
+        Arc::try_unwrap(out).unwrap().into_inner().unwrap()
     }
     fn parameters(&self) -> Vec<Tensor> {
-        let mut out = Vec::new();
-        for neuron in self.neurons.iter() {
+        let out = Arc::new(RwLock::new(Vec::new()));
+        self.neurons.par_iter().for_each(|neuron| {
             for param in neuron.parameters().iter() {
-                out.push(param.clone());
+                out.write().unwrap().push(param.clone());
             }
-        }
-        out
+        });
+        Arc::try_unwrap(out).unwrap().into_inner().unwrap()
     }
 }
 
@@ -92,12 +95,12 @@ pub struct Model {
 impl Model {
     pub fn new(layers: Vec<Box<dyn Layer>>) -> Self { Model { layers } }
     pub fn update_weights(&self, learning_rate: f64) {
-        for tensor in self.parameters().iter() {
+        self.parameters().par_iter().for_each(|tensor| {
             for i in tensor.data.iter() {
                 let grad = i.0.read().unwrap().grad;
                 i.0.write().unwrap().data -= learning_rate * grad;
             }
-        }
+        });
     }
 }
 impl Layer for Model {
