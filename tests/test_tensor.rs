@@ -20,25 +20,25 @@ fn test_tensor() {
 #[test]
 fn test_tensor_mul() {
     let a = Tensor::new(ArrayD::from_shape_vec(
-        IxDyn(&[4]), vec![1.0, 2.0, 3.0, 4.0])
+        IxDyn(&[1, 4]), vec![1.0, 2.0, 3.0, 4.0])
         .unwrap());
     let b = Tensor::new(ArrayD::from_shape_vec(
-        IxDyn(&[4]), vec![5.0, 5.0, 5.0, 5.0])
+        IxDyn(&[1, 1]), vec![5.0])
         .unwrap());
     let c = a.clone() * b.clone();
     c.backward();
 
     assert_eq!(c.data(), ArrayD::from_shape_vec(
-        IxDyn(&[4]), vec![5.0, 10.0, 15.0, 20.0])
+        IxDyn(&[1, 4]), vec![5.0, 10.0, 15.0, 20.0])
         .unwrap());
     assert_eq!(c.grad(), ArrayD::from_shape_vec(
-        IxDyn(&[4]), vec![1.0, 1.0, 1.0, 1.0])
+        IxDyn(&[1, 4]), vec![1.0, 1.0, 1.0, 1.0])
         .unwrap());
     assert_eq!(a.grad(), ArrayD::from_shape_vec(
-        IxDyn(&[4]), vec![5.0, 5.0, 5.0, 5.0])
+        IxDyn(&[1, 4]), vec![5.0, 5.0, 5.0, 5.0])
         .unwrap());
     assert_eq!(b.grad(), ArrayD::from_shape_vec(
-        IxDyn(&[4]), vec![1.0, 2.0, 3.0, 4.0])
+        IxDyn(&[1, 1]), vec![10.0])
         .unwrap());
 }
 
