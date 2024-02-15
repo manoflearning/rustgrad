@@ -66,7 +66,7 @@ impl Layer for Linear {
     fn forward(&self, x: &Tensor) -> Tensor {
         let x_shape = x.data.shape();
         let out = Arc::new(RwLock::new(Tensor::new(ArrayD::zeros(vec![self.neurons.len(), x_shape[1]]))));
-        self.neurons.iter().enumerate().for_each(|(i, neuron)| {
+        self.neurons.par_iter().enumerate().for_each(|(i, neuron)| {
             let temp = neuron.forward(x);
             for j in 0..x_shape[1] {
                 out.write().unwrap().data[[i, j]] = temp.data[[0, j]].clone();

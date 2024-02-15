@@ -3,7 +3,8 @@ use rayon::prelude::*;
 use std::cmp::max;
 use std::sync::{Arc, RwLock};
 use std::ops::{Add, Div, Mul, Neg, Sub};
-use ndarray::{ArrayD, IxDyn};
+use ndarray::{ArrayD, Axis, IxDyn, Zip};
+use ndarray::parallel::prelude::*;
 
 // TODO: support 1D, 3D, 4D ... tensors
 // TODO: support broadcasting
@@ -24,10 +25,11 @@ impl Add<Tensor> for Tensor {
         assert!(col_len % self_shape[1] == 0 && col_len % other_shape[1] == 0, "col_len: {} self_shape[1]: {} other_shape[1]: {}", col_len, self_shape[1], other_shape[1]);
 
         let mut out = Tensor::new(ArrayD::zeros(vec![row_len, col_len]));
-        (0..row_len).for_each(|i| {
-            (0..col_len).for_each(|j| {
-                out.data[[i, j]] = self.data[[i % self_shape[0], j % self_shape[1]]].clone() + other.data[[i % other_shape[0], j % other_shape[1]]].clone();
-            });
+        Zip::from(&mut out.data)
+        .and(self.data.broadcast(IxDyn(&[row_len, col_len])).unwrap())
+        .and(other.data.broadcast(IxDyn(&[row_len, col_len])).unwrap())
+        .par_for_each(|r, a, b| {
+            *r = a.clone() + b.clone();
         });
         out
     }
@@ -52,10 +54,11 @@ impl Mul<Tensor> for Tensor {
         assert!(col_len % self_shape[1] == 0 && col_len % other_shape[1] == 0, "col_len: {} self_shape[1]: {} other_shape[1]: {}", col_len, self_shape[1], other_shape[1]);
 
         let mut out = Tensor::new(ArrayD::zeros(vec![row_len, col_len]));
-        (0..row_len).for_each(|i| {
-            (0..col_len).for_each(|j| {
-                out.data[[i, j]] = self.data[[i % self_shape[0], j % self_shape[1]]].clone() * other.data[[i % other_shape[0], j % other_shape[1]]].clone();
-            });
+        Zip::from(&mut out.data)
+        .and(self.data.broadcast(IxDyn(&[row_len, col_len])).unwrap())
+        .and(other.data.broadcast(IxDyn(&[row_len, col_len])).unwrap())
+        .par_for_each(|r, a, b| {
+            *r = a.clone() * b.clone();
         });
         out
     }
@@ -106,29 +109,32 @@ impl Tensor {
 
     // base ops: pow, exp, relu, log
     pub fn pow(&self, other: f32) -> Tensor {
-        Tensor { data: self.data.mapv(|x| x.pow(other)) }
+        let mut out = self.data.clone();
+        Zip::from(&mut out)
+            .par_for_each(|x| { *x = x.pow(other); });
+        Tensor { data: out }
+        // Tensor { data: self.data.mapv(|x| x.pow(other)) }
     }
     pub fn exp(&self) -> Tensor {
-        Tensor { data: self.data.mapv(|x| x.exp()) }
+        let mut out = self.data.clone();
+        Zip::from(&mut out)
+            .par_for_each(|x| { *x = x.exp(); });
+        Tensor { data: out }
+        // Tensor { data: self.data.mapv(|x| x.exp()) }
     }
     pub fn relu(&self) -> Tensor {
-        // let mut out_data = ArrayD::from_elem(self.data.shape(), Value::new(0.0));
-        // (0..self.data.shape()[0]).into_par_iter().for_each(|i| {
-        //     let slice_self_data = self.data.index_axis(Axis(0), i);
-        //     let mut slice_out_data = out_data.index_axis_mut(Axis(0), i);
-    
-        //     slice_out_data
-        //         .iter_mut()
-        //         .zip(slice_self_data.iter())
-        //         .for_each(|(x, y)| {
-        //             *x = y.relu();
-        //         });
-        // });
-        // Tensor { data: out_data }
-        Tensor { data: self.data.mapv(|x| x.relu()) }
+        let mut out = self.data.clone();
+        Zip::from(&mut out)
+            .par_for_each(|x| { *x = x.relu(); });
+        Tensor { data: out }
+        // Tensor { data: self.data.mapv(|x| x.relu()) }
     }
     pub fn log(&self) -> Tensor {
-        Tensor { data: self.data.mapv(|x| x.log()) }
+        let mut out = self.data.clone();
+        Zip::from(&mut out)
+            .par_for_each(|x| { *x = x.log(); });
+        Tensor { data: out }
+        // Tensor { data: self.data.mapv(|x| x.log()) }
     }
 
     // more ops: dot, softmax, sigmoid, tanh
@@ -165,13 +171,21 @@ impl Tensor {
         Arc::try_unwrap(out).unwrap().into_inner().unwrap()
     }
     pub fn sigmoid(&self) -> Tensor {
-        Tensor { data: self.data.mapv(|x| x.sigmoid()) }
+        let mut out = self.data.clone();
+        Zip::from(&mut out)
+            .par_for_each(|x| { *x = x.sigmoid(); });
+        Tensor { data: out }
+        // Tensor { data: self.data.mapv(|x| x.sigmoid()) }
     }
     pub fn tanh(&self) -> Tensor {
-        Tensor { data: self.data.mapv(|x| x.tanh()) }
+        let mut out = self.data.clone();
+        Zip::from(&mut out)
+            .par_for_each(|x: &mut Value| { *x = x.tanh(); });
+        Tensor { data: out }
+        // Tensor { data: self.data.mapv(|x| x.tanh()) }
     }
     pub fn sum(&self) -> Tensor {
-        Tensor { data: ArrayD::from_elem(IxDyn(&[1, 1]), self.data.iter().map(|x| x.clone()).sum()) }
+        Tensor { data: ArrayD::from_elem(IxDyn(&[1, 1]), self.data.par_iter().map(|x| x.clone()).sum()) }
     }
 
     // backward prop
@@ -204,7 +218,7 @@ impl Tensor {
         out
     }
     pub fn requires_grad(&self, requires_grad: bool) {
-        self.data.iter().for_each(|i| { i.0.write().unwrap().requires_grad = requires_grad; });
+        self.data.par_iter().for_each(|i| { i.0.write().unwrap().requires_grad = requires_grad; });
     }
     pub fn data(&self) -> ArrayD<f32> { self.data.mapv(|x| x.0.read().unwrap().data) }
     pub fn grad(&self) -> ArrayD<f32> { self.data.mapv(|x| x.0.read().unwrap().grad) }
