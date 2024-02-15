@@ -2,6 +2,7 @@ use crate::tensor::Tensor;
 use rayon::prelude::*;
 use rand::Rng;
 use std::sync::{Arc, RwLock};
+use ndarray::{ArrayD, IxDyn};
 
 pub trait Layer {
     fn forward(&self, x: &Tensor) -> Tensor;
@@ -10,6 +11,13 @@ pub trait Layer {
         self.parameters().par_iter().for_each(|tensor| {
             for i in tensor.data.iter() {
                 i.0.write().unwrap().grad = 0.0;
+            }
+        });
+    }
+    fn requires_grad(&self, requires_grad: bool) {
+        self.parameters().par_iter().for_each(|tensor| {
+            for i in tensor.data.iter() {
+                i.0.write().unwrap().requires_grad = requires_grad;
             }
         });
     }
@@ -33,8 +41,10 @@ pub struct Neuron {
 impl Neuron {
     pub fn new(nin: usize) -> Self {
         let mut rng = rand::thread_rng(); // TODO: fixed random seed
-        let w: Tensor = Tensor::new(vec![rng.gen_range(-0.01..0.01); nin], vec![1, nin]);
-        let b: Tensor = Tensor::new(vec![rng.gen_range(-0.01..0.01)], vec![1, 1]);
+        let _w = vec![rng.gen_range(-0.01..0.01); nin];
+        let w: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[1, nin]), _w).unwrap());
+        let _b = vec![rng.gen_range(-0.01..0.01)];
+        let b: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[1, 1]), _b).unwrap());
         Neuron { w, b }
     }
 }
@@ -54,12 +64,12 @@ impl Linear {
 }
 impl Layer for Linear {
     fn forward(&self, x: &Tensor) -> Tensor {
-        let out = Arc::new(RwLock::new(Tensor::new(vec![0.0; x.shape[1] * self.neurons.len()], vec![self.neurons.len(), x.shape[1]])));
+        let x_shape = x.data.shape();
+        let out = Arc::new(RwLock::new(Tensor::new(ArrayD::zeros(vec![self.neurons.len(), x_shape[1]]))));
         self.neurons.iter().enumerate().for_each(|(i, neuron)| {
             let temp = neuron.forward(x);
-            for j in 0..x.shape[1] {
-                let hash_num = out.read().unwrap().hash(&[i, j]);
-                out.write().unwrap().data[hash_num] = temp.get(0, j);
+            for j in 0..x_shape[1] {
+                out.write().unwrap().data[[i, j]] = temp.data[[0, j]].clone();
             }
         });
         Arc::try_unwrap(out).unwrap().into_inner().unwrap()
@@ -94,7 +104,7 @@ pub struct Model {
 }
 impl Model {
     pub fn new(layers: Vec<Box<dyn Layer>>) -> Self { Model { layers } }
-    pub fn update_weights(&self, learning_rate: f64) {
+    pub fn update_weights(&self, learning_rate: f32) {
         self.parameters().par_iter().for_each(|tensor| {
             for i in tensor.data.iter() {
                 let grad = i.0.read().unwrap().grad;
