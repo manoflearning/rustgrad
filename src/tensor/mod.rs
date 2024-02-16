@@ -32,13 +32,13 @@ impl Add<Tensor> for Tensor {
         out
     }
 }
-impl Add<f32> for Tensor {
+impl Add<f64> for Tensor {
     type Output = Tensor;
-    fn add(self: Tensor, other: f32) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], other)) + self }
+    fn add(self: Tensor, other: f64) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], other)) + self }
 }
-impl Add<Tensor> for f32 {
+impl Add<Tensor> for f64 {
     type Output = Tensor;
-    fn add(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) + other }
+    fn add(self: f64, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) + other }
 }
 impl Mul<Tensor> for Tensor { 
     type Output = Tensor;
@@ -61,13 +61,13 @@ impl Mul<Tensor> for Tensor {
         out
     }
 }
-impl Mul<f32> for Tensor {
+impl Mul<f64> for Tensor {
     type Output = Tensor;
-    fn mul(self: Tensor, other: f32) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], other)) * self }
+    fn mul(self: Tensor, other: f64) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], other)) * self }
 }
-impl Mul<Tensor> for f32 {
+impl Mul<Tensor> for f64 {
     type Output = Tensor;
-    fn mul(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) * other }
+    fn mul(self: f64, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) * other }
 }
 impl Neg for Tensor {
     type Output = Tensor;
@@ -81,35 +81,35 @@ impl Sub<Tensor> for Tensor {
     type Output = Tensor;
     fn sub(self: Tensor, other: Tensor) -> Self::Output { self + -other }
 }
-impl Sub<f32> for Tensor {
+impl Sub<f64> for Tensor {
     type Output = Tensor;
-    fn sub(self: Tensor, other: f32) -> Self::Output { -Tensor::new(ArrayD::from_elem(vec![1, 1], other)) + self }
+    fn sub(self: Tensor, other: f64) -> Self::Output { -Tensor::new(ArrayD::from_elem(vec![1, 1], other)) + self }
 }
-impl Sub<Tensor> for f32 {
+impl Sub<Tensor> for f64 {
     type Output = Tensor;
-    fn sub(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) + -other }
+    fn sub(self: f64, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) + -other }
 }
 impl Div<Tensor> for Tensor {
     type Output = Tensor;
     fn div(self: Tensor, other: Tensor) -> Self::Output { self * other.pow(-1.0) }
 }
-impl Div<f32> for Tensor {
+impl Div<f64> for Tensor {
     type Output = Tensor;
-    fn div(self: Tensor, other: f32) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], other)) * self }
+    fn div(self: Tensor, other: f64) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], other)) * self }
 }
-impl Div<Tensor> for f32 {
+impl Div<Tensor> for f64 {
     type Output = Tensor; 
-    fn div(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) * other.pow(-1.0) }
+    fn div(self: f64, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) * other.pow(-1.0) }
 }
 
 impl Tensor {
-    pub fn new(data: ArrayD<f32>) -> Tensor { Tensor { data: data.mapv(|x| Value::new(x)), } }
+    pub fn new(data: ArrayD<f64>) -> Tensor { Tensor { data: data.mapv(|x| Value::new(x)), } }
 
     // base ops: sum, pow, exp, relu, log
     pub fn sum(&self) -> Tensor {
         Tensor { data: ArrayD::from_elem(IxDyn(&[1, 1]), self.data.par_iter().map(|x| x.clone()).sum()) }
     }
-    pub fn pow(&self, other: f32) -> Tensor {
+    pub fn pow(&self, other: f64) -> Tensor {
         let mut out = self.data.clone();
         Zip::from(&mut out)
             .par_for_each(|x| { *x = x.pow(other); });
@@ -219,6 +219,6 @@ impl Tensor {
     pub fn requires_grad(&self, requires_grad: bool) {
         self.data.par_iter().for_each(|i| { i.0.write().unwrap().requires_grad = requires_grad; });
     }
-    pub fn data(&self) -> ArrayD<f32> { self.data.mapv(|x| x.0.read().unwrap().data) }
-    pub fn grad(&self) -> ArrayD<f32> { self.data.mapv(|x| x.0.read().unwrap().grad) }
+    pub fn data(&self) -> ArrayD<f64> { self.data.mapv(|x| x.0.read().unwrap().data) }
+    pub fn grad(&self) -> ArrayD<f64> { self.data.mapv(|x| x.0.read().unwrap().grad) }
 }

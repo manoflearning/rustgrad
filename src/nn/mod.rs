@@ -104,7 +104,7 @@ pub struct Model {
 }
 impl Model {
     pub fn new(layers: Vec<Box<dyn Layer>>) -> Self { Model { layers } }
-    pub fn update_weights(&self, learning_rate: f32) {
+    pub fn update_weights(&self, learning_rate: f64) {
         self.parameters().par_iter().for_each(|tensor| {
             tensor.data.par_iter().for_each(|value| {
                 let mut value_write = value.0.write().unwrap();

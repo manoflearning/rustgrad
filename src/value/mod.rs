@@ -12,9 +12,9 @@ use std::iter::Sum;
 #[derive(Clone, Debug)]
 pub struct RawValue {
     pub id: usize,
-    pub data: f32,
-    pub grad: f32,
-    pub children: Vec<(Value, f32)>,
+    pub data: f64,
+    pub grad: f64,
+    pub children: Vec<(Value, f64)>,
     pub requires_grad: bool,
 }
 
@@ -36,13 +36,13 @@ impl Add<Value> for Value {
         out
     }
 }
-impl Add<f32> for Value {
+impl Add<f64> for Value {
     type Output = Value;
-    fn add(self, other: f32) -> Self::Output { self + Value::new(other) }
+    fn add(self, other: f64) -> Self::Output { self + Value::new(other) }
 }
-impl Add<Value> for f32 {
+impl Add<Value> for f64 {
     type Output = Value;
-    fn add(self: f32, other: Value) -> Self::Output { Value::new(self) + other }
+    fn add(self: f64, other: Value) -> Self::Output { Value::new(self) + other }
 }
 impl Mul<Value> for Value {
     type Output = Value;
@@ -58,13 +58,13 @@ impl Mul<Value> for Value {
         out
     }
 }
-impl Mul<f32> for Value {
+impl Mul<f64> for Value {
     type Output = Value;
-    fn mul(self: Value, other: f32) -> Self::Output { self * Value::new(other) }
+    fn mul(self: Value, other: f64) -> Self::Output { self * Value::new(other) }
 }
-impl Mul<Value> for f32 {
+impl Mul<Value> for f64 {
     type Output = Value;
-    fn mul(self: f32, other: Value) -> Self::Output { Value::new(self) * other }
+    fn mul(self: f64, other: Value) -> Self::Output { Value::new(self) * other }
 }
 impl Neg for Value {
     type Output = Value;
@@ -95,31 +95,31 @@ impl Sub<Value> for Value {
     type Output = Value;
     fn sub(self: Value, other: Value) -> Self::Output { self + -other }
 }
-impl Sub<f32> for Value {
+impl Sub<f64> for Value {
     type Output = Value;
-    fn sub(self: Value, other: f32) -> Self::Output { self + -Value::new(other) }
+    fn sub(self: Value, other: f64) -> Self::Output { self + -Value::new(other) }
 }
-impl Sub<Value> for f32 {
+impl Sub<Value> for f64 {
     type Output = Value;
-    fn sub(self: f32, other: Value) -> Self::Output { Value::new(self) + -other }
+    fn sub(self: f64, other: Value) -> Self::Output { Value::new(self) + -other }
 }
 impl Div<Value> for Value {
     type Output = Value;
     fn div(self: Value, other: Value) -> Self::Output { self * other.pow(-1.0) }
 }
-impl Div<f32> for Value {
+impl Div<f64> for Value {
     type Output = Value;
-    fn div(self: Value, other: f32) -> Self::Output { self * Value::new(other).pow(-1.0) }
+    fn div(self: Value, other: f64) -> Self::Output { self * Value::new(other).pow(-1.0) }
 }
-impl Div<Value> for f32 {
+impl Div<Value> for f64 {
     type Output = Value; 
-    fn div(self: f32, other: Value) -> Self::Output { Value::new(self) * other.pow(-1.0) }
+    fn div(self: f64, other: Value) -> Self::Output { Value::new(self) * other.pow(-1.0) }
 }
 
 pub static COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 impl Value {
-    pub fn new(data: f32) -> Self {
+    pub fn new(data: f64) -> Self {
         Value(Arc::new(RwLock::new(RawValue {
             id: COUNTER.fetch_add(1, Ordering::Relaxed),
             data,
@@ -130,7 +130,7 @@ impl Value {
     }
 
     // base ops: pow, exp, relu, log
-    pub fn pow(&self, other: f32) -> Value {
+    pub fn pow(&self, other: f64) -> Value {
         let out = Value::new(self.data().powf(other));
         // out.0.write().unwrap().children.0 = (Some(self.clone()), Some(other * self.data().powf(other - 1.0)));
         out.0.write().unwrap().children.push((self.clone(), other * self.data().powf(other - 1.0)));
@@ -219,6 +219,6 @@ impl Value {
 
     // misc
     pub fn id(&self) -> usize { self.0.read().unwrap().id }
-    pub fn data(&self) -> f32 { self.0.read().unwrap().data }
-    pub fn grad(&self) -> f32 { self.0.read().unwrap().grad }
+    pub fn data(&self) -> f64 { self.0.read().unwrap().data }
+    pub fn grad(&self) -> f64 { self.0.read().unwrap().grad }
 }
