@@ -9,16 +9,16 @@ pub trait Layer {
     fn parameters(&self) -> Vec<Tensor>;
     fn zerograd(&self) {
         self.parameters().par_iter().for_each(|tensor| {
-            for i in tensor.data.iter() {
-                i.0.write().unwrap().grad = 0.0;
-            }
+            tensor.data.par_iter().for_each(|value| {
+                value.0.write().unwrap().grad = 0.0;
+            });
         });
     }
     fn requires_grad(&self, requires_grad: bool) {
         self.parameters().par_iter().for_each(|tensor| {
-            for i in tensor.data.iter() {
-                i.0.write().unwrap().requires_grad = requires_grad;
-            }
+            tensor.data.par_iter().for_each(|value| {
+                value.0.write().unwrap().requires_grad = requires_grad;
+            });
         });
     }
 }
@@ -106,10 +106,11 @@ impl Model {
     pub fn new(layers: Vec<Box<dyn Layer>>) -> Self { Model { layers } }
     pub fn update_weights(&self, learning_rate: f32) {
         self.parameters().par_iter().for_each(|tensor| {
-            for i in tensor.data.iter() {
-                let grad = i.0.read().unwrap().grad;
-                i.0.write().unwrap().data -= learning_rate * grad;
-            }
+            tensor.data.par_iter().for_each(|value| {
+                let mut value_write = value.0.write().unwrap();
+                let grad = value_write.grad;
+                value_write.data -= learning_rate * grad;
+            });
         });
     }
 }
