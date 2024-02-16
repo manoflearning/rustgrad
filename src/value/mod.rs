@@ -1,7 +1,7 @@
 // base ops (defined as itself):
-// add, mul, neg, pow, exp, relu, log
+// add, mul, neg, sum, pow, exp, relu, log
 // more ops (defined as a combination of base ops):
-// sub, div, sum, sigmoid, tanh
+// sub, div, sigmoid, tanh
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -21,13 +21,18 @@ pub struct RawValue {
 #[derive(Clone, Debug)]
 pub struct Value(pub Arc<RwLock<RawValue>>);
 
-// base ops: add, mul, neg
+// base ops: add, mul, neg, sum
 impl Add<Value> for Value {
     type Output = Value;
     fn add(self, other: Value) -> Self::Output {
         let out = Value::new(self.data() + other.data());
-        out.0.write().unwrap().children.push((self.clone(), 1.0));
-        out.0.write().unwrap().children.push((other.clone(), 1.0));
+        {
+            let mut out_write = out.0.write().unwrap();
+            // out_write.children.0 = (Some(self.clone()), Some(1.0));
+            // out_write.children.1 = (Some(other.clone()), Some(1.0));
+            out_write.children.push((self, 1.0));
+            out_write.children.push((other, 1.0));
+        }
         out
     }
 }
@@ -43,8 +48,13 @@ impl Mul<Value> for Value {
     type Output = Value;
     fn mul(self: Value, other: Value) -> Self::Output {
         let out = Value::new(self.data() * other.data());
-        out.0.write().unwrap().children.push((self.clone(), other.data()));
-        out.0.write().unwrap().children.push((other.clone(), self.data()));
+        {
+            let mut out_write = out.0.write().unwrap();
+            // out_write.children.0 = (Some(self.clone()), Some(other.data()));
+            // out_write.children.1 = (Some(other.clone()), Some(self.data()));
+            out_write.children.push((self.clone(), other.data()));
+            out_write.children.push((other.clone(), self.data()));
+        }
         out
     }
 }
@@ -60,12 +70,27 @@ impl Neg for Value {
     type Output = Value;
     fn neg(self) -> Self::Output {
         let out = Value::new(-self.data());
+        // out.0.write().unwrap().children.0 = (Some(self.clone()), Some(-1.0));
         out.0.write().unwrap().children.push((self.clone(), -1.0));
         out
     }
 }
+impl Sum for Value {
+    fn sum<I: Iterator<Item = Value>>(iter: I) -> Self {
+        let arr: Vec<Value> = iter.collect();
+        let out = Value::new(0.0);
+        {
+            let mut out_write = out.0.write().unwrap();
+            for v in arr.iter() {
+                out_write.data += v.data();
+                out_write.children.push((v.clone(), 1.0));
+            }
+        }
+        out
+    }
+}
 
-// more ops: sub, div, sum
+// more ops: sub, div
 impl Sub<Value> for Value {
     type Output = Value;
     fn sub(self: Value, other: Value) -> Self::Output { self + -other }
@@ -90,11 +115,6 @@ impl Div<Value> for f32 {
     type Output = Value; 
     fn div(self: f32, other: Value) -> Self::Output { Value::new(self) * other.pow(-1.0) }
 }
-impl Sum for Value {
-    fn sum<I: Iterator<Item = Value>>(iter: I) -> Self {
-        iter.fold(Value::new(0.0), |acc, value| acc + value)
-    }
-}
 
 pub static COUNTER: AtomicUsize = AtomicUsize::new(1);
 
@@ -112,21 +132,25 @@ impl Value {
     // base ops: pow, exp, relu, log
     pub fn pow(&self, other: f32) -> Value {
         let out = Value::new(self.data().powf(other));
+        // out.0.write().unwrap().children.0 = (Some(self.clone()), Some(other * self.data().powf(other - 1.0)));
         out.0.write().unwrap().children.push((self.clone(), other * self.data().powf(other - 1.0)));
         out
     }
     pub fn exp(&self) -> Value {
         let out = Value::new(self.data().exp());
+        // out.0.write().unwrap().children.0 = (Some(self.clone()), Some(self.data().exp()));
         out.0.write().unwrap().children.push((self.clone(), self.data().exp()));
         out
     }
     pub fn relu(&self) -> Value {
         let out = Value::new(self.data().max(0.0));
+        // out.0.write().unwrap().children.0 = (Some(self.clone()), Some(if self.data() > 0.0 { 1.0 } else { 0.0 }));
         out.0.write().unwrap().children.push((self.clone(), if self.data() > 0.0 { 1.0 } else { 0.0 }));
         out
     }
     pub fn log(&self) -> Value {
         let out = Value::new(self.data().ln());
+        // out.0.write().unwrap().children.0 = (Some(self.clone()), Some(1.0 / self.data()));
         out.0.write().unwrap().children.push((self.clone(), 1.0 / self.data()));
         out
     }
@@ -146,10 +170,30 @@ impl Value {
         let mut visited: HashSet<usize> = HashSet::new();
         fn build_topo(v: Value, topo: &mut Vec<Value>, visited: &mut HashSet<usize>) {
             visited.insert(v.id());
+            // {
+            //     let v_read = v.0.read().unwrap();
+            //     v_read.children.0.0.as_ref().map(|child| {
+            //         let child_read = child.0.read().unwrap();
+            //         if !visited.contains(&child.id()) 
+            //         && child_read.requires_grad
+            //         && !child_read.children.0.0.is_none() {
+            //             build_topo(child.clone(), topo, visited);
+            //         }
+            //     });
+            //     v_read.children.1.0.as_ref().map(|child| {
+            //         let child_read = child.0.read().unwrap();
+            //         if !visited.contains(&child.id()) 
+            //         && child_read.requires_grad
+            //         && !child_read.children.0.0.is_none() {
+            //             build_topo(child.clone(), topo, visited);
+            //         }
+            //     });
+            // }
             for (child, _) in v.0.read().unwrap().children.iter() {
+                let child_read = child.0.read().unwrap();
                 if !visited.contains(&child.id()) 
-                && child.0.read().unwrap().requires_grad
-                && !child.0.read().unwrap().children.is_empty() {
+                && child_read.requires_grad
+                && !child_read.children.is_empty() {
                     build_topo(child.clone(), topo, visited);
                 }
             }
@@ -159,10 +203,18 @@ impl Value {
         for v in topo.iter().rev() { v._backward(); }
     }
     pub fn _backward(&self) {
-        let grad = self.0.read().unwrap().grad;
-        self.0.read().unwrap().children.iter().for_each(|(child, x)| {
-            child.0.write().unwrap().grad += x * grad;
-        });
+        let self_read = self.0.read().unwrap();
+        let grad = self_read.grad;
+
+        // self_read.children.0.0.as_ref().map(|child| {
+        //     child.0.write().unwrap().grad += grad * self_read.children.0.1.unwrap();
+        // });
+        // self_read.children.1.0.as_ref().map(|child| {
+        //     child.0.write().unwrap().grad += grad * self_read.children.1.1.unwrap();
+        // });
+        for (child, weight) in self_read.children.iter() {
+            child.0.write().unwrap().grad += grad * weight;
+        }
     }
 
     // misc
