@@ -2,7 +2,7 @@ use crate::tensor::Tensor;
 use rayon::prelude::*;
 use rand::Rng;
 use std::sync::{Arc, RwLock};
-use ndarray::{ArrayD, IxDyn};
+use ndarray::{s, ArrayD, IxDyn};
 
 pub trait Layer {
     fn forward(&self, x: &Tensor) -> Tensor;
@@ -42,14 +42,14 @@ impl Neuron {
     pub fn new(nin: usize) -> Self {
         let mut rng = rand::thread_rng(); // TODO: fixed random seed
         let _w = vec![rng.gen_range(-0.01..0.01); nin];
-        let w: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[1, nin]), _w).unwrap());
+        let w: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[nin]), _w).unwrap());
         let _b = vec![rng.gen_range(-0.01..0.01)];
-        let b: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[1, 1]), _b).unwrap());
+        let b: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[1]), _b).unwrap());
         Neuron { w, b }
     }
 }
 impl Layer for Neuron {
-    fn forward(&self, x: &Tensor) -> Tensor { self.w.dot(x) + self.b.clone() }
+    fn forward(&self, x: &Tensor) -> Tensor { x.dot(&self.w) + self.b.clone() }
     fn parameters(&self) -> Vec<Tensor> { vec![self.w.clone(), self.b.clone()] }
 }
 
@@ -64,13 +64,14 @@ impl Linear {
 }
 impl Layer for Linear {
     fn forward(&self, x: &Tensor) -> Tensor {
+        assert_eq!(x.data.shape().len(), 2);
+        assert_eq!(x.data.shape()[1], self.neurons[0].w.data.shape()[0]);
+
         let x_shape = x.data.shape();
-        let out = Arc::new(RwLock::new(Tensor::new(ArrayD::zeros(vec![self.neurons.len(), x_shape[1]]))));
+        let out = Arc::new(RwLock::new(Tensor::new(ArrayD::zeros(vec![x_shape[0], self.neurons.len()]))));
         self.neurons.par_iter().enumerate().for_each(|(i, neuron)| {
-            let temp = neuron.forward(x);
-            for j in 0..x_shape[1] {
-                out.write().unwrap().data[[i, j]] = temp.data[[0, j]].clone();
-            }
+            let mut out_write = out.write().unwrap();
+            out_write.data.slice_mut(s![.., i]).assign(&neuron.forward(x).data.into_shape(IxDyn(&[x_shape[0]])).unwrap());
         });
         Arc::try_unwrap(out).unwrap().into_inner().unwrap()
     }
@@ -85,19 +86,89 @@ impl Layer for Linear {
     }
 }
 
-// pub struct Conv2d {
-//     pub w: Tensor,
-//     pub b: Tensor,
-//     pub kernel_size: usize,
-//     pub stride: usize,
-//     pub padding: usize,
-//     pub bias: bool,
-// }
-// impl Conv2d {
-//     pub fn new(in_channels: usize, out_channels: usize, kernel_size: usize) -> Self {
-//         let mut rng = rand::thread_rng(); // TODO: fixed random seed       
-//     }
-// }
+pub struct Conv2d {
+    pub w: Tensor,
+    pub b: Tensor,
+    pub in_channels: usize,
+    pub out_channels: usize,
+    pub kernel_size: (usize, usize),
+    pub stride: usize,
+    pub padding: usize,
+}
+impl Conv2d {
+    pub fn new(in_channels: usize, out_channels: usize, kernel_size: usize, stride: usize, padding: usize) -> Self {
+        let mut rng = rand::thread_rng(); // TODO: fixed random seed
+        let w = Tensor::new(ArrayD::from_shape_vec(
+            IxDyn(&[out_channels, in_channels, kernel_size, kernel_size]), 
+            (0..out_channels * in_channels * kernel_size * kernel_size).map(|_| rng.gen_range(-0.01..0.01)).collect()).unwrap());
+        let b = Tensor::new(ArrayD::from_shape_vec(
+            IxDyn(&[1, out_channels, 1, 1]), 
+            (0..out_channels).map(|_| rng.gen_range(-0.01..0.01)).collect()).unwrap());
+
+        Conv2d {
+            w,
+            b,
+            in_channels,
+            out_channels,
+            kernel_size: (kernel_size, kernel_size),
+            stride,
+            padding,
+        }
+    }
+}
+impl Layer for Conv2d {
+    fn forward(&self, x: &Tensor) -> Tensor {
+        x.conv2d(&self.w, self.stride, self.padding) + self.b.clone()
+    }
+    fn parameters(&self) -> Vec<Tensor> { vec![self.w.clone(), self.b.clone()] }
+}
+
+pub struct BatchNorm2d {
+    pub gamma: Tensor,
+    pub beta: Tensor,
+}
+impl BatchNorm2d {
+    pub fn new(channels: usize) -> Self {
+        let mut rng = rand::thread_rng(); // TODO: fixed random seed
+        let _gamma = vec![rng.gen_range(-0.01..0.01); channels];
+        let gamma: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[channels]), _gamma).unwrap());
+        let _beta = vec![rng.gen_range(-0.01..0.01); channels];
+        let beta: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[channels]), _beta).unwrap());
+        BatchNorm2d { gamma, beta }
+    }
+}
+impl Layer for BatchNorm2d {
+    fn forward(&self, x: &Tensor) -> Tensor {
+        // TODO: implement batchnorm
+        x.clone()
+    }
+    fn parameters(&self) -> Vec<Tensor> { vec![self.gamma.clone(), self.beta.clone()] }
+}
+
+pub struct MaxPool2d {
+    pub kernel_size: (usize, usize),
+}
+impl MaxPool2d {
+    pub fn new(kernel_size: usize) -> Self { MaxPool2d { kernel_size: (kernel_size, kernel_size) } }
+}
+impl Layer for MaxPool2d {
+    fn forward(&self, x: &Tensor) -> Tensor { x.max_pool2d(self.kernel_size) }
+    fn parameters(&self) -> Vec<Tensor> { vec![] }
+}
+
+pub struct Flatten;
+impl Layer for Flatten {
+    fn forward(&self, x: &Tensor) -> Tensor {
+        assert!(x.data.shape().len() == 4);
+        let out = x.clone();
+        let out_shape = out.data.shape();
+        let out_len: usize = out_shape.iter().product();
+        let new_shape = IxDyn(&[out_shape[0], out_len / out_shape[0]]);
+        let reshaped_out_data = out.data.into_shape(new_shape).unwrap();
+        Tensor { data: reshaped_out_data }
+    }
+    fn parameters(&self) -> Vec<Tensor> { vec![] }
+}
 
 pub struct Model {
     pub layers: Vec<Box<dyn Layer>>,
