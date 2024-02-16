@@ -3,11 +3,9 @@ use rayon::prelude::*;
 use std::cmp::max;
 use std::sync::{Arc, RwLock};
 use std::ops::{Add, Div, Mul, Neg, Sub};
-use ndarray::{ArrayD, Axis, IxDyn, Zip};
-use ndarray::parallel::prelude::*;
+use ndarray::{ArrayD, IxDyn, Zip};
 
 // TODO: support 1D, 3D, 4D ... tensors
-// TODO: support broadcasting
 
 #[derive(Clone, Debug)]
 pub struct Tensor {pub data: ArrayD<Value>}
@@ -36,11 +34,11 @@ impl Add<Tensor> for Tensor {
 }
 impl Add<f32> for Tensor {
     type Output = Tensor;
-    fn add(self: Tensor, other: f32) -> Self::Output { Tensor::new(ArrayD::from_elem(self.data.raw_dim(), other)) + self }
+    fn add(self: Tensor, other: f32) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], other)) + self }
 }
 impl Add<Tensor> for f32 {
     type Output = Tensor;
-    fn add(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(other.data.raw_dim(), self)) + other }
+    fn add(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) + other }
 }
 impl Mul<Tensor> for Tensor { 
     type Output = Tensor;
@@ -65,11 +63,11 @@ impl Mul<Tensor> for Tensor {
 }
 impl Mul<f32> for Tensor {
     type Output = Tensor;
-    fn mul(self: Tensor, other: f32) -> Self::Output { Tensor::new(ArrayD::from_elem(self.data.raw_dim(), other)) * self }
+    fn mul(self: Tensor, other: f32) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], other)) * self }
 }
 impl Mul<Tensor> for f32 {
     type Output = Tensor;
-    fn mul(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(other.data.raw_dim(), self)) * other }
+    fn mul(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) * other }
 }
 impl Neg for Tensor {
     type Output = Tensor;
@@ -85,11 +83,11 @@ impl Sub<Tensor> for Tensor {
 }
 impl Sub<f32> for Tensor {
     type Output = Tensor;
-    fn sub(self: Tensor, other: f32) -> Self::Output { -Tensor::new(ArrayD::from_elem(self.data.raw_dim(), other)) + self }
+    fn sub(self: Tensor, other: f32) -> Self::Output { -Tensor::new(ArrayD::from_elem(vec![1, 1], other)) + self }
 }
 impl Sub<Tensor> for f32 {
     type Output = Tensor;
-    fn sub(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(other.data.raw_dim(), self)) + -other }
+    fn sub(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) + -other }
 }
 impl Div<Tensor> for Tensor {
     type Output = Tensor;
@@ -97,17 +95,20 @@ impl Div<Tensor> for Tensor {
 }
 impl Div<f32> for Tensor {
     type Output = Tensor;
-    fn div(self: Tensor, other: f32) -> Self::Output { Tensor::new(ArrayD::from_elem(self.data.raw_dim(), other)) * self }
+    fn div(self: Tensor, other: f32) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], other)) * self }
 }
 impl Div<Tensor> for f32 {
     type Output = Tensor; 
-    fn div(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(other.data.raw_dim(), self)) * other.pow(-1.0) }
+    fn div(self: f32, other: Tensor) -> Self::Output { Tensor::new(ArrayD::from_elem(vec![1, 1], self)) * other.pow(-1.0) }
 }
 
 impl Tensor {
     pub fn new(data: ArrayD<f32>) -> Tensor { Tensor { data: data.mapv(|x| Value::new(x)), } }
 
-    // base ops: pow, exp, relu, log
+    // base ops: sum, pow, exp, relu, log
+    pub fn sum(&self) -> Tensor {
+        Tensor { data: ArrayD::from_elem(IxDyn(&[1, 1]), self.data.par_iter().map(|x| x.clone()).sum()) }
+    }
     pub fn pow(&self, other: f32) -> Tensor {
         let mut out = self.data.clone();
         Zip::from(&mut out)
@@ -164,8 +165,9 @@ impl Tensor {
                 tmp.push(self.data[[r, c]].exp());
             }
             let sum: Value = tmp.iter().map(|x| x.clone()).sum();
+            let mut out_write = out.write().unwrap();
             for (r, _) in tmp.iter().enumerate().take(self_shape[0]) {
-                out.write().unwrap().data[[r, c]] = tmp[r].clone() / sum.clone();
+                out_write.data[[r, c]] = tmp[r].clone() / sum.clone();
             }
         });
         Arc::try_unwrap(out).unwrap().into_inner().unwrap()
@@ -183,9 +185,6 @@ impl Tensor {
             .par_for_each(|x: &mut Value| { *x = x.tanh(); });
         Tensor { data: out }
         // Tensor { data: self.data.mapv(|x| x.tanh()) }
-    }
-    pub fn sum(&self) -> Tensor {
-        Tensor { data: ArrayD::from_elem(IxDyn(&[1, 1]), self.data.par_iter().map(|x| x.clone()).sum()) }
     }
 
     // backward prop
