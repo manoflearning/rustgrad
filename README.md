@@ -1,10 +1,13 @@
 # RustGrad
 
-RustGrad is a small deep learning framework developed in Rust. It currently features a slow, unoptimized implementation, focusing primarily on accurately delivering the intended functionality. It is a toy project for understanding neural network, but the long-term goal is to develop it into a practical and useful framework.
+RustGrad is a small deep learning framework developed from scratch in Rust.
+It is a toy project for understanding neural networks, but the long-term goal is to develop it into a practical and useful framework.
 
 ## Features
 
-TBD
+### MNIST
+
+With RustGrad, you can train on the MNIST dataset. Although it's currently slow and a bit rough around the edges, it's fully functional! It supports operations like 'Linear', 'ReLU', 'Conv2d', 'BatchNorm2d', and 'MaxPool2d'. For more details, please check out [examples/mnist.rs](https://github.com/manoflearning/rustgrad/blob/master/examples/mnist.rs).
 
 ## Inspired by
 
