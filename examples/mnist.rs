@@ -4,7 +4,7 @@ use rustgrad::*;
 use std::{cmp::min, time::Instant};
 use mnist::*;
 
-fn fetch_mnist(train_size: usize, test_size: usize) -> (Tensor, Tensor, Tensor, Tensor) { // TODO: optimize
+fn fetch_mnist(train_size: usize, test_size: usize) -> (Tensor, Tensor, Tensor, Tensor) {
     // load MNIST dataset (how to use: https://docs.rs/mnist/latest/mnist/)
     // TODO: implement dataloader without any dependencies
 
@@ -16,49 +16,38 @@ fn fetch_mnist(train_size: usize, test_size: usize) -> (Tensor, Tensor, Tensor, 
         tst_img,
         tst_lbl,
     } = MnistBuilder::new()
-            .label_format_digit()
-            .training_set_length(train_size as u32)
-            .validation_set_length(0)
-            .test_set_length(test_size as u32)
-            .finalize();
+        .label_format_digit()
+        .training_set_length(train_size as u32)
+        .validation_set_length(0)
+        .test_set_length(test_size as u32)
+        .finalize();
 
-    let _x_train = ArrayD::from_shape_vec(IxDyn(&[train_size, 784]), trn_img)
+    let x_train = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[train_size, 1, 28, 28]), trn_img)
     .expect("Error converting images to ArrayD struct")
-    .map(|x| *x as f64 / 256.0);
+    .map(|x| *x as f64 / 256.0));
     
-    let _x_test = ArrayD::from_shape_vec(IxDyn(&[test_size, 784]), tst_img)
+    let x_test = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[test_size, 1, 28, 28]), tst_img)
     .expect("Error converting images to ArrayD struct")
-    .map(|x| *x as f64 / 256.0);
+    .map(|x| *x as f64 / 256.0));
     
-    let _y_train = ArrayD::from_shape_vec(IxDyn(&[train_size, 1]), trn_lbl)
+    let y_train = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[train_size, 1]), trn_lbl)
     .expect("Error converting labels to ArrayD struct")
-    .map(|x| *x as f64);
+    .map(|x| *x as f64));
     
-    let _y_test = ArrayD::from_shape_vec(IxDyn(&[test_size, 1]), tst_lbl)
+    let y_test = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[test_size, 1]), tst_lbl)
     .expect("Error converting labels to ArrayD struct")
-    .map(|x| *x as f64);
+    .map(|x| *x as f64));
 
-    let mut y_train = Tensor::new(ArrayD::zeros(IxDyn(&[10, train_size])));
-    let mut y_test = Tensor::new(ArrayD::zeros(IxDyn(&[10, test_size])));
-    for i in 0..train_size {
-        y_train.data[[_y_train[[i, 0]] as usize, i]] = Value::new(1.0);
-    }
-    for i in 0..test_size {
-        y_test.data[[_y_test[[i, 0]] as usize, i]] = Value::new(1.0);
-    }
+    // TODO: standardization
 
-    (Tensor::new(_x_train).transpose(), y_train,
-    Tensor::new(_x_test).transpose(), y_test)
+    (x_train, y_train, x_test, y_test)
 }
 
 fn cross_entropy_loss(y_pred: &Tensor, y: &Tensor) -> Tensor {
     let y_pred_shape = y_pred.data.shape();
-    assert_eq!(y_pred_shape, y.data.shape());
-    let mut out = Tensor::new(ArrayD::zeros(vec![1, y_pred_shape[1]]));
-    for i in 0..y_pred_shape[1] {
-        out.data[[0, i]] = -((0..y_pred_shape[0]).map(|k| 
-            y.data[[k, i]].clone() * y_pred.data[[k, i]].log()
-        ).sum::<Value>());
+    let mut out = Tensor::new(ArrayD::zeros(vec![y_pred_shape[0], 1]));
+    for i in 0..y_pred_shape[0] {
+        out.data[[i, 0]] = -y_pred.data[[i, y.data[[i, 0]].data() as usize]].log();
     }
     out
 }
@@ -67,16 +56,16 @@ fn get_test_acc(y_pred: &Tensor, y_test: &Tensor) -> usize {
     let mut correct = 0;
 
     let y_pred_shape = y_pred.data.shape();
-    for i in 0..y_pred_shape[1] {
+    for i in 0..y_pred_shape[0] {
         let mut max_idx = 0;
         let mut max_val = 0.0;
-        for j in 0..y_pred_shape[0] {
-            if y_pred.data[[j, i]].data() > max_val {
-                max_val = y_pred.data[[j, i]].data();
+        for j in 0..y_pred_shape[1] {
+            if y_pred.data[[i, j]].data() > max_val {
+                max_val = y_pred.data[[i, j]].data();
                 max_idx = j;
             }
         }
-        if y_test.data[[max_idx, i]].data() == 1.0 as f64 { correct += 1; }
+        if y_test.data[[i, 0]].data() == max_idx as f64 { correct += 1; }
     }
     correct
 }
@@ -90,9 +79,9 @@ pub fn main() {
     // load MNIST dataset
     let data_loading_time_start: Instant = Instant::now();
 
-    let train_size: usize = 60;
-    let test_size: usize = 10;
-    let (x_train, y_train, x_test, y_test) = fetch_mnist(train_size, test_size);
+    let train_size: usize = 6;
+    let test_size: usize = 1;
+    let (x_train, y_train, x_test,  y_test) = fetch_mnist(train_size, test_size);
     x_train.requires_grad(false);
     y_train.requires_grad(false);
     x_test.requires_grad(false);
@@ -107,15 +96,38 @@ pub fn main() {
 
     // initialize model
     let model_time_start: Instant = Instant::now();
-    
+
+    // CNN
     let model = Model::new(vec![
-        Box::new(Linear::new(784, 128)), Box::new(ReLU),
-        Box::new(Linear::new(128, 64)), Box::new(ReLU),
-        Box::new(Linear::new(64, 10)), Box::new(Softmax),
+        Box::new(Conv2d::new(1, 32, 5, 1, 0)),
+        Box::new(ReLU),
+        Box::new(Conv2d::new(32, 32, 5, 1, 0)),
+        Box::new(ReLU),
+        Box::new(BatchNorm2d::new(32)),
+        Box::new(MaxPool2d::new(2)),
+        Box::new(Conv2d::new(32, 64, 3, 1, 0)),
+        Box::new(ReLU),
+        Box::new(Conv2d::new(64, 64, 3, 1, 0)),
+        Box::new(ReLU),
+        Box::new(BatchNorm2d::new(64)),
+        Box::new(MaxPool2d::new(2)),
+        Box::new(Flatten),
+        Box::new(Linear::new(576, 10)),
+        Box::new(Softmax),
     ]);
-    model.layers[0].requires_grad(false); // is it really correct?
-    model.layers[2].requires_grad(false); // is it really correct?
-    model.layers[4].requires_grad(false); // is it really correct?
+
+    // 3 Layer MLP
+    // let model = Model::new(vec![
+    //     Box::new(Flatten),
+    //     Box::new(Linear::new(784, 128)),
+    //     Box::new(ReLU),
+    //     Box::new(Linear::new(128, 64)),
+    //     Box::new(ReLU),
+    //     Box::new(Linear::new(64, 10)),
+    //     Box::new(Softmax),
+    // ]);
+
+    model.layers.iter().for_each(|layer| { layer.requires_grad(false); });
 
     println!("Model Initialization Done \t| Time: {:10.2}s", (Instant::now() - model_time_start).as_secs_f64());
 
@@ -149,7 +161,7 @@ pub fn main() {
 
             let loss: Tensor = cross_entropy_loss(&y_pred, &batch_labels);
             let cost: Tensor = loss.sum();
-            cost_sum += cost.data()[[0, 0]];
+            cost_sum += cost.data()[[0]];
 
             time_sum[2] += (Instant::now() - loss_time_start).as_secs_f64();
 
@@ -164,7 +176,7 @@ pub fn main() {
         }
         cost_sum /= train_size as f64;
 
-        println!("Epoch {:5}, Loss {:5.2} \t| Time: {:10.2}s (batch: {:5.2}s, forward: {:5.2}s, loss: {:5.2}s, backward: {:.4}s)", epoch, cost_sum, time_sum.iter().sum::<f64>(), time_sum[0], time_sum[1], time_sum[2], time_sum[3]);
+        println!("Epoch {:5}, Loss {:5.2} \t| Time: {:10.2}s (batch: {:5.2}s, forward: {:5.2}s, loss: {:5.2}s, backward: {:5.2}s)", epoch, cost_sum, time_sum.iter().sum::<f64>(), time_sum[0], time_sum[1], time_sum[2], time_sum[3]);
     }
 
     println!("Training Done \t\t\t| Time: {:10.2}s", (Instant::now() - trainig_time_start).as_secs_f64());

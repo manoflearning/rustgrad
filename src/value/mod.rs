@@ -28,8 +28,6 @@ impl Add<Value> for Value {
         let out = Value::new(self.data() + other.data());
         {
             let mut out_write = out.0.write().unwrap();
-            // out_write.children.0 = (Some(self.clone()), Some(1.0));
-            // out_write.children.1 = (Some(other.clone()), Some(1.0));
             out_write.children.push((self, 1.0));
             out_write.children.push((other, 1.0));
         }
@@ -47,13 +45,14 @@ impl Add<Value> for f64 {
 impl Mul<Value> for Value {
     type Output = Value;
     fn mul(self: Value, other: Value) -> Self::Output {
-        let out = Value::new(self.data() * other.data());
+        let self_data = self.data();
+        let other_data = other.data();
+        let out = Value::new(self_data * other_data);
         {
             let mut out_write = out.0.write().unwrap();
-            // out_write.children.0 = (Some(self.clone()), Some(other.data()));
-            // out_write.children.1 = (Some(other.clone()), Some(self.data()));
-            out_write.children.push((self.clone(), other.data()));
-            out_write.children.push((other.clone(), self.data()));
+            // we only need to backprop if the gradient is non-zero
+            if other_data != 0.0 { out_write.children.push((self, other_data)); }
+            if self_data != 0.0 { out_write.children.push((other, self_data)); }
         }
         out
     }
@@ -70,20 +69,18 @@ impl Neg for Value {
     type Output = Value;
     fn neg(self) -> Self::Output {
         let out = Value::new(-self.data());
-        // out.0.write().unwrap().children.0 = (Some(self.clone()), Some(-1.0));
-        out.0.write().unwrap().children.push((self.clone(), -1.0));
+        out.0.write().unwrap().children.push((self, -1.0));
         out
     }
 }
 impl Sum for Value {
     fn sum<I: Iterator<Item = Value>>(iter: I) -> Self {
-        let arr: Vec<Value> = iter.collect();
         let out = Value::new(0.0);
         {
             let mut out_write = out.0.write().unwrap();
-            for v in arr.iter() {
+            for v in iter {
                 out_write.data += v.data();
-                out_write.children.push((v.clone(), 1.0));
+                out_write.children.push((v, 1.0));
             }
         }
         out
@@ -132,25 +129,23 @@ impl Value {
     // base ops: pow, exp, relu, log
     pub fn pow(&self, other: f64) -> Value {
         let out = Value::new(self.data().powf(other));
-        // out.0.write().unwrap().children.0 = (Some(self.clone()), Some(other * self.data().powf(other - 1.0)));
-        out.0.write().unwrap().children.push((self.clone(), other * self.data().powf(other - 1.0)));
+        // we only need to backprop if the input is non-zero
+        if other != 0.0 { out.0.write().unwrap().children.push((self.clone(), other * self.data().powf(other - 1.0))); }
         out
     }
     pub fn exp(&self) -> Value {
         let out = Value::new(self.data().exp());
-        // out.0.write().unwrap().children.0 = (Some(self.clone()), Some(self.data().exp()));
         out.0.write().unwrap().children.push((self.clone(), self.data().exp()));
         out
     }
     pub fn relu(&self) -> Value {
         let out = Value::new(self.data().max(0.0));
-        // out.0.write().unwrap().children.0 = (Some(self.clone()), Some(if self.data() > 0.0 { 1.0 } else { 0.0 }));
-        out.0.write().unwrap().children.push((self.clone(), if self.data() > 0.0 { 1.0 } else { 0.0 }));
+        // we only need to backprop if the input is greater than 0
+        if self.data() > 0.0 { out.0.write().unwrap().children.push((self.clone(), 1.0)); }
         out
     }
     pub fn log(&self) -> Value {
         let out = Value::new(self.data().ln());
-        // out.0.write().unwrap().children.0 = (Some(self.clone()), Some(1.0 / self.data()));
         out.0.write().unwrap().children.push((self.clone(), 1.0 / self.data()));
         out
     }
@@ -165,30 +160,10 @@ impl Value {
 
     // backward prop
     pub fn backward(&self) {
-        self.0.write().unwrap().grad = 1.0;
         let mut topo: Vec<Value> = Vec::new();
         let mut visited: HashSet<usize> = HashSet::new();
         fn build_topo(v: Value, topo: &mut Vec<Value>, visited: &mut HashSet<usize>) {
             visited.insert(v.id());
-            // {
-            //     let v_read = v.0.read().unwrap();
-            //     v_read.children.0.0.as_ref().map(|child| {
-            //         let child_read = child.0.read().unwrap();
-            //         if !visited.contains(&child.id()) 
-            //         && child_read.requires_grad
-            //         && !child_read.children.0.0.is_none() {
-            //             build_topo(child.clone(), topo, visited);
-            //         }
-            //     });
-            //     v_read.children.1.0.as_ref().map(|child| {
-            //         let child_read = child.0.read().unwrap();
-            //         if !visited.contains(&child.id()) 
-            //         && child_read.requires_grad
-            //         && !child_read.children.0.0.is_none() {
-            //             build_topo(child.clone(), topo, visited);
-            //         }
-            //     });
-            // }
             for (child, _) in v.0.read().unwrap().children.iter() {
                 let child_read = child.0.read().unwrap();
                 if !visited.contains(&child.id()) 
@@ -200,18 +175,13 @@ impl Value {
             topo.push(v);
         }
         build_topo(self.clone(), &mut topo, &mut visited);
+
+        self.0.write().unwrap().grad = 1.0;
         for v in topo.iter().rev() { v._backward(); }
     }
     pub fn _backward(&self) {
         let self_read = self.0.read().unwrap();
         let grad = self_read.grad;
-
-        // self_read.children.0.0.as_ref().map(|child| {
-        //     child.0.write().unwrap().grad += grad * self_read.children.0.1.unwrap();
-        // });
-        // self_read.children.1.0.as_ref().map(|child| {
-        //     child.0.write().unwrap().grad += grad * self_read.children.1.1.unwrap();
-        // });
         for (child, weight) in self_read.children.iter() {
             child.0.write().unwrap().grad += grad * weight;
         }

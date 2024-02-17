@@ -149,7 +149,7 @@ impl Tensor {
         Tensor { data: out }
     }
 
-    // more ops: conv2d, dot, softmax, sigmoid, tanh
+    // more ops: conv2d, max_pool2d, dot, softmax, sigmoid, tanh
     pub fn conv2d(&self, w: &Tensor, s: usize, p: usize) -> Tensor {
         // support 4d tensors only
         let x_shape = self.data.shape();
@@ -163,21 +163,21 @@ impl Tensor {
             (0..out_shape[1]).into_par_iter().for_each(|j| {
                 (0..out_shape[2]).into_par_iter().for_each(|k| {
                     (0..out_shape[3]).into_par_iter().for_each(|l| {
-                        let mut values = Vec::new();
-                        (0..w_shape[1]).for_each(|m| {
-                            (0..w_shape[2]).for_each(|n| {
-                                (0..w_shape[3]).for_each(|o| {
+                        let values = Arc::new(RwLock::new(Vec::new()));
+
+                        (0..w_shape[1]).into_par_iter().for_each(|m| {
+                            (0..w_shape[2]).into_par_iter().for_each(|n| {
+                                (0..w_shape[3]).into_par_iter().for_each(|o| {
                                     let x = (k * s + n) as isize - p as isize;
                                     let y = (l * s + o) as isize - p as isize;
-                                    if x >= 0 && x < x_shape[2] as isize && y >= 0 && y < x_shape[3] as isize {
-                                        values.push(self.data[[i, m, x as usize, y as usize]].clone() * w.data[[j, m, n, o]].clone());
+                                    if 0 <= x && x < x_shape[2] as isize && 0 <= y && y < x_shape[3] as isize {
+                                        values.write().unwrap().push(self.data[[i, m, x as usize, y as usize]].clone() * w.data[[j, m, n, o]].clone());
                                     }
                                 });
                             });
                         });
-                        if !values.is_empty() {
-                            out.write().unwrap().data[[i, j, k, l]] = values.par_iter().map(|x| x.clone()).sum();
-                        }
+
+                        out.write().unwrap().data[[i, j, k, l]] = values.read().unwrap().par_iter().map(|x| x.clone()).sum();
                     });
                 });
             });
@@ -222,8 +222,9 @@ impl Tensor {
             assert_eq!(self_shape[0], other_shape[0]);
             let mut out = self.data.clone();
             Zip::from(&mut out)
-                .par_for_each(|x| { *x = x.clone() * other.data[[0]].clone(); });
-            Tensor { data: out }
+                .and(&other.data)
+                .par_for_each(|x, y| { *x = x.clone() * y.clone(); });
+            Tensor { data: ArrayD::from_elem(IxDyn(&[1]), out.into_iter().map(|x| x.clone()).sum()) }
         }
         else if self_shape.len() == 1 && other_shape.len() == 2 {
             assert_eq!(self_shape[0], other_shape[0]);
@@ -236,7 +237,7 @@ impl Tensor {
                 out[[0, j]] = values.par_iter().map(|x| x.clone()).sum();
             });
             Tensor { data: out }
-        }   
+        }
         else if self_shape.len() == 2 && other_shape.len() == 1 {
             assert_eq!(self_shape[1], other_shape[0]);
             let mut out = ArrayD::from_elem(vec![self_shape[0], 1], Value::new(0.0));
