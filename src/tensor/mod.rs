@@ -342,12 +342,41 @@ impl Tensor {
     pub fn requires_grad(&self, requires_grad: bool) {
         self.data.par_iter().for_each(|i| { i.0.write().unwrap().requires_grad = requires_grad; });
     }
-    // pub fn mean(&self) -> Tensor {
-    //     // TODO
-    // }
-    // pub fn std_2(&self) -> Tensor { // std^2
-    //     // TODO
-    // }
+    pub fn mean(&self) -> Tensor {
+        assert_eq!(self.data.shape().len(), 4);
+        let self_size = self.data.shape()[0] * self.data.shape()[2] * self.data.shape()[3];
+        let mut out = ArrayD::from_elem(vec![1, self.data.shape()[1], 1, 1], Value::new(0.0));
+        (0..self.data.shape()[1]).for_each(|i| {
+            let mut values = Vec::new();
+            (0..self.data.shape()[0]).for_each(|j| {
+                (0..self.data.shape()[2]).for_each(|k| {
+                    (0..self.data.shape()[3]).for_each(|l| {
+                        values.push(self.data[[j, i, k, l]].clone());
+                    });
+                });
+            });
+            out[[0, i, 0, 0]] = values.par_iter().map(|x| x.clone()).sum::<Value>() / self_size as f64;
+        });
+        Tensor { data: out }
+    }
+    pub fn var(&self) -> Tensor {
+        assert_eq!(self.data.shape().len(), 4);
+        let self_size = self.data.shape()[0] * self.data.shape()[2] * self.data.shape()[3];
+        let mut out = ArrayD::from_elem(vec![1, self.data.shape()[1], 1, 1], Value::new(0.0));
+        (0..self.data.shape()[1]).for_each(|i| {
+            let mut values = Vec::new();
+            (0..self.data.shape()[0]).for_each(|j| {
+                (0..self.data.shape()[2]).for_each(|k| {
+                    (0..self.data.shape()[3]).for_each(|l| {
+                        values.push(self.data[[j, i, k, l]].clone());
+                    });
+                });
+            });
+            let mean = values.par_iter().map(|x| x.clone()).sum::<Value>() / self_size as f64;
+            out[[0, i, 0, 0]] = values.par_iter().map(|x| (x.clone() - mean.clone()).pow(2.0)).sum::<Value>() / self_size as f64;
+        });
+        Tensor { data: out }
+    }
     pub fn data(&self) -> ArrayD<f64> { self.data.mapv(|x| x.0.read().unwrap().data) }
     pub fn grad(&self) -> ArrayD<f64> { self.data.mapv(|x| x.0.read().unwrap().grad) }
 }

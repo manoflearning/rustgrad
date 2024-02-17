@@ -34,7 +34,7 @@ impl Layer for Softmax {
     fn parameters(&self) -> Vec<Tensor> { vec![] }
 }
 
-pub struct Neuron {
+pub struct Neuron { // TODO: delete Neuron
     pub w: Tensor,
     pub b: Tensor,
 }
@@ -131,16 +131,16 @@ impl BatchNorm2d {
     pub fn new(channels: usize) -> Self {
         let mut rng = rand::thread_rng(); // TODO: fixed random seed
         let _gamma = vec![rng.gen_range(-0.01..0.01); channels];
-        let gamma: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[channels]), _gamma).unwrap());
+        let gamma: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[1, channels, 1, 1]), _gamma).unwrap());
         let _beta = vec![rng.gen_range(-0.01..0.01); channels];
-        let beta: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[channels]), _beta).unwrap());
+        let beta: Tensor = Tensor::new(ArrayD::from_shape_vec(IxDyn(&[1, channels, 1, 1]), _beta).unwrap());
         BatchNorm2d { gamma, beta }
     }
 }
 impl Layer for BatchNorm2d {
-    fn forward(&self, x: &Tensor) -> Tensor {
-        // TODO: implement batchnorm
-        x.clone()
+    fn forward(&self, x: &Tensor) -> Tensor {        
+        let x_normalized = (x.clone() - x.mean()) / (x.var() + 1e-5).pow(0.5);
+        x_normalized * self.gamma.clone() + self.beta.clone()
     }
     fn parameters(&self) -> Vec<Tensor> { vec![self.gamma.clone(), self.beta.clone()] }
 }
