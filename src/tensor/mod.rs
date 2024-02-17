@@ -351,11 +351,11 @@ impl Tensor {
             (0..self.data.shape()[0]).for_each(|j| {
                 (0..self.data.shape()[2]).for_each(|k| {
                     (0..self.data.shape()[3]).for_each(|l| {
-                        values.push(self.data[[j, i, k, l]].clone());
+                        values.push(self.data[[j, i, k, l]].data());
                     });
                 });
             });
-            out[[0, i, 0, 0]] = values.par_iter().map(|x| x.clone()).sum::<Value>() / self_size as f64;
+            out[[0, i, 0, 0]] = Value::new(values.par_iter().map(|x| x.clone()).sum::<f64>() / self_size as f64);
         });
         Tensor { data: out }
     }
@@ -368,12 +368,12 @@ impl Tensor {
             (0..self.data.shape()[0]).for_each(|j| {
                 (0..self.data.shape()[2]).for_each(|k| {
                     (0..self.data.shape()[3]).for_each(|l| {
-                        values.push(self.data[[j, i, k, l]].clone());
+                        values.push(self.data[[j, i, k, l]].data());
                     });
                 });
             });
-            let mean = values.par_iter().map(|x| x.clone()).sum::<Value>() / self_size as f64;
-            out[[0, i, 0, 0]] = values.par_iter().map(|x| (x.clone() - mean.clone()).pow(2.0)).sum::<Value>() / self_size as f64;
+            let mean = values.par_iter().map(|x| x).sum::<f64>() / self_size as f64;
+            out[[0, i, 0, 0]] = Value::new(values.par_iter().map(|x| (x - mean).powi(2)).sum::<f64>() / self_size as f64);
         });
         Tensor { data: out }
     }
