@@ -71,7 +71,7 @@ fn get_test_acc(y_pred: &Tensor, y_test: &Tensor) -> usize {
 }
 
 pub fn main() {
-    std::env::set_var("RUST_BACKTRACE", "1");
+    std::env::set_var("RUST_BACKTRACE", "full");
 
     println!("--------------------------------------------------------------------------------");
     let total_time_start: Instant = Instant::now();
@@ -99,21 +99,14 @@ pub fn main() {
 
     // CNN
     let model = Model::new(vec![
-        Box::new(Conv2d::new(1, 32, 5, 1, 0)),
-        Box::new(ReLU),
-        Box::new(Conv2d::new(32, 32, 5, 1, 0)),
-        Box::new(ReLU),
-        Box::new(BatchNorm2d::new(32)),
-        Box::new(MaxPool2d::new(2)),
-        Box::new(Conv2d::new(32, 64, 3, 1, 0)),
-        Box::new(ReLU),
-        Box::new(Conv2d::new(64, 64, 3, 1, 0)),
-        Box::new(ReLU),
-        Box::new(BatchNorm2d::new(64)),
-        Box::new(MaxPool2d::new(2)),
+        Box::new(Conv2d::new(1, 32, 5, 1, 0)), Box::new(ReLU),
+        Box::new(Conv2d::new(32, 32, 5, 1, 0)), Box::new(ReLU),
+        Box::new(BatchNorm2d::new(32)), Box::new(MaxPool2d::new(2)),
+        Box::new(Conv2d::new(32, 64, 3, 1, 0)), Box::new(ReLU),
+        Box::new(Conv2d::new(64, 64, 3, 1, 0)), Box::new(ReLU),
+        Box::new(BatchNorm2d::new(64)), Box::new(MaxPool2d::new(2)),
         Box::new(Flatten),
-        Box::new(Linear::new(576, 10)),
-        Box::new(Softmax),
+        Box::new(Linear::new(576, 10)), Box::new(Softmax),
     ]);
 
     // 3 Layer MLP
@@ -127,7 +120,9 @@ pub fn main() {
     //     Box::new(Softmax),
     // ]);
 
-    model.layers.iter().for_each(|layer| { layer.requires_grad(false); });
+    model.layers.iter().for_each(|layer| {
+        layer.requires_grad(false);
+    });
 
     println!("Model Initialization Done \t| Time: {:10.2}s", (Instant::now() - model_time_start).as_secs_f64());
 
@@ -144,22 +139,22 @@ pub fn main() {
             let batch_time_start: Instant = Instant::now();
 
             let (start, end) = (i * batch_size, min((i + 1) * batch_size, train_size));
-            let batch_data: Tensor = x_train.slice(start..end);
-            let batch_labels: Tensor = y_train.slice(start..end);
-            
+            let data: Tensor = x_train.slice(start..end);
+            let targets: Tensor = y_train.slice(start..end);
+
             time_sum[0] += (Instant::now() - batch_time_start).as_secs_f64();
 
             // forward pass
             let forward_time_start: Instant = Instant::now();
-            
-            let y_pred: Tensor = model.forward(&batch_data);
+
+            let y_pred: Tensor = model.forward(&data);
 
             time_sum[1] += (Instant::now() - forward_time_start).as_secs_f64();
 
             // calculate loss
             let loss_time_start: Instant = Instant::now();
 
-            let loss: Tensor = cross_entropy_loss(&y_pred, &batch_labels);
+            let loss: Tensor = cross_entropy_loss(&y_pred, &targets);
             let cost: Tensor = loss.sum();
             cost_sum += cost.data()[[0]];
 
@@ -176,7 +171,7 @@ pub fn main() {
         }
         cost_sum /= train_size as f64;
 
-        println!("Epoch {:5}, Loss {:5.2} \t| Time: {:10.2}s (batch: {:5.2}s, forward: {:5.2}s, loss: {:5.2}s, backward: {:5.2}s)", epoch, cost_sum, time_sum.iter().sum::<f64>(), time_sum[0], time_sum[1], time_sum[2], time_sum[3]);
+        println!("Epoch {:5}, Loss {:5.2} \t| Time: {:10.2}s (batch: {:7.2}s, forward: {:7.2}s, loss: {:7.2}s, backward: {:7.2}s)", epoch, cost_sum, time_sum.iter().sum::<f64>(), time_sum[0], time_sum[1], time_sum[2], time_sum[3]);
     }
 
     println!("Training Done \t\t\t| Time: {:10.2}s", (Instant::now() - trainig_time_start).as_secs_f64());
