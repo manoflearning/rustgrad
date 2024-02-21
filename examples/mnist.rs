@@ -79,8 +79,8 @@ pub fn main() {
     // load MNIST dataset
     let data_loading_time_start: Instant = Instant::now();
 
-    let train_size: usize = 6;
-    let test_size: usize = 1;
+    let train_size: usize = 60_000;
+    let test_size: usize = 10_000;
     let (x_train, y_train, x_test,  y_test) = fetch_mnist(train_size, test_size);
     x_train.requires_grad(false);
     y_train.requires_grad(false);
@@ -139,8 +139,8 @@ pub fn main() {
             let batch_time_start: Instant = Instant::now();
 
             let (start, end) = (i * batch_size, min((i + 1) * batch_size, train_size));
-            let data: Tensor = x_train.slice(start..end);
-            let targets: Tensor = y_train.slice(start..end);
+            let data: Tensor = x_train.slice(start..end, 0);
+            let targets: Tensor = y_train.slice(start..end, 0);
 
             time_sum[0] += (Instant::now() - batch_time_start).as_secs_f64();
 
@@ -182,8 +182,8 @@ pub fn main() {
     let mut correct = 0;
     for i in 0..(test_size + batch_size - 1) / batch_size {
         let (start, end) = (i * batch_size, min((i + 1) * batch_size, test_size));
-        let x_test = x_test.slice(start..end);
-        let y_test = y_test.slice(start..end);
+        let x_test = x_test.slice(start..end, 0);
+        let y_test = y_test.slice(start..end, 0);
         let y_pred = model.forward(&x_test);
         correct += get_test_acc(&y_pred, &y_test);
     }
