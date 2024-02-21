@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::ops::{Add, Sub, Mul, Div, Neg};
+use std::ops::{Add, AddAssign, Div, Mul, Neg, Sub};
 use std::sync::{Arc, RwLock};
 use std::iter::Sum;
 
@@ -41,6 +41,9 @@ impl Add<f64> for Value {
 impl Add<Value> for f64 {
     type Output = Value;
     fn add(self: f64, other: Value) -> Self::Output { Value::new(self) + other }
+}
+impl AddAssign<f64> for Value {
+    fn add_assign(&mut self, other: f64) { *self = self.clone() + other; }
 }
 impl Mul<Value> for Value {
     type Output = Value;
