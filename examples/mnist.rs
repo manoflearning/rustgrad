@@ -171,7 +171,7 @@ pub fn main() {
         }
         cost_sum /= train_size as f64;
 
-        println!("Epoch {:5}, Loss {:5.2} \t| Time: {:10.2}s (batch: {:7.2}s, forward: {:7.2}s, loss: {:7.2}s, backward: {:7.2}s)", epoch, cost_sum, time_sum.iter().sum::<f64>(), time_sum[0], time_sum[1], time_sum[2], time_sum[3]);
+        println!("Epoch {:5}, Loss {:5.2} \t| Time: {:10.2}s (batch: {:5.2}s, forward: {:5.2}s, loss: {:5.2}s, backward: {:5.2}s)", epoch, cost_sum, time_sum.iter().sum::<f64>(), time_sum[0], time_sum[1], time_sum[2], time_sum[3]);
     }
 
     println!("Training Done \t\t\t| Time: {:10.2}s", (Instant::now() - trainig_time_start).as_secs_f64());
