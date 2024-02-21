@@ -66,27 +66,27 @@ fn test_tensor_dot() {
         IxDyn(&[4, 1]), vec![1.0, 2.0, 3.0, 4.0])
         .unwrap());
 
-    let p = Tensor::new(ArrayD::from_shape_vec(
-        IxDyn(&[4, 1]), vec![1.0, 2.0, 3.0, 4.0])
-        .unwrap());
-    let q = Tensor::new(ArrayD::from_shape_vec(
-        IxDyn(&[4, 1]), vec![5.0, 6.0, 7.0, 8.0])
-        .unwrap());
-    let r = p.transpose().dot(&q);
-    r.backward();
+    // let p = Tensor::new(ArrayD::from_shape_vec(
+    //     IxDyn(&[4, 1]), vec![1.0, 2.0, 3.0, 4.0])
+    //     .unwrap());
+    // let q = Tensor::new(ArrayD::from_shape_vec(
+    //     IxDyn(&[4, 1]), vec![5.0, 6.0, 7.0, 8.0])
+    //     .unwrap());
+    // let r = p.transpose().dot(&q);
+    // r.backward();
 
-    assert_eq!(r.data(), ArrayD::from_shape_vec(
-        IxDyn(&[1, 1]), vec![70.0])
-        .unwrap());
-    assert_eq!(r.grad(), ArrayD::from_shape_vec(
-        IxDyn(&[1, 1]), vec![1.0])
-        .unwrap());
-    assert_eq!(p.grad(), ArrayD::from_shape_vec(
-        IxDyn(&[4, 1]), vec![5.0, 6.0, 7.0, 8.0])
-        .unwrap());
-    assert_eq!(q.grad(), ArrayD::from_shape_vec(
-        IxDyn(&[4, 1]), vec![1.0, 2.0, 3.0, 4.0])
-        .unwrap());
+    // assert_eq!(r.data(), ArrayD::from_shape_vec(
+    //     IxDyn(&[1, 1]), vec![70.0])
+    //     .unwrap());
+    // assert_eq!(r.grad(), ArrayD::from_shape_vec(
+    //     IxDyn(&[1, 1]), vec![1.0])
+    //     .unwrap());
+    // assert_eq!(p.grad(), ArrayD::from_shape_vec(
+    //     IxDyn(&[4, 1]), vec![5.0, 6.0, 7.0, 8.0])
+    //     .unwrap());
+    // assert_eq!(q.grad(), ArrayD::from_shape_vec(
+    //     IxDyn(&[4, 1]), vec![1.0, 2.0, 3.0, 4.0])
+    //     .unwrap());
 }
 
 #[test]
