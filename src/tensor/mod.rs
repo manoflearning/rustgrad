@@ -3,7 +3,7 @@ use rayon::prelude::*;
 use std::cmp::max;
 use std::sync::{Arc, RwLock};
 use std::ops::{Add, Div, Mul, Neg, Sub};
-use ndarray::{ArrayD, IxDyn, Zip};
+use ndarray::{s, ArrayD, IxDyn, Zip};
 
 // TODO: support 1D, 3D, 4D ... tensors
 
@@ -272,7 +272,7 @@ impl Tensor {
         let out_h = out.shape()[0];
         let out_w = out.shape()[1];
         (0..out_h).for_each(|i| {
-            let self_slice = self.slice(i..i + 1).exp();
+            let self_slice = self.slice(i..i + 1, 0).exp();
             let sum_val = self_slice.sum().data[0].clone();
             (0..out_w).for_each(|j| {
                 out[[i, j]] = self_slice.data[[0, j]].clone() / sum_val.clone();
@@ -299,45 +299,40 @@ impl Tensor {
     }
 
     // misc
-    pub fn slice(&self, s: std::ops::Range<usize>) -> Tensor {
-        let self_shape = self.data.shape();
-        let mut out_shape = vec![];
-        (0..self_shape.len()).for_each(|i| {
-            if i == 0 { out_shape.push(s.end - s.start); }
-            else { out_shape.push(self_shape[i]); }
-        });
-
-        let mut out = ArrayD::from_elem(out_shape.clone(), Value::new(0.0));
-        if self_shape.len() == 2 {
-            (0..out_shape[0]).for_each(|i| {
-                (0..out_shape[1]).for_each(|j| {
-                    out[[i, j]] = self.data[[i + s.start, j]].clone();
-                });
-            });
+    pub fn slice(&self, indices: std::ops::Range<usize>, axis: usize) -> Tensor {
+        assert!(indices.start < indices.end);
+        assert!(axis < self.data.shape().len());
+        if axis == 0 {
+            match self.data.shape().len() {
+                1 => Tensor { data: self.data.slice(s![indices.start..indices.end]).to_owned().into_dyn() },
+                2 => Tensor { data: self.data.slice(s![indices.start..indices.end, ..]).to_owned().into_dyn() },
+                3 => Tensor { data: self.data.slice(s![indices.start..indices.end, .., ..]).to_owned().into_dyn() },
+                4 => Tensor { data: self.data.slice(s![indices.start..indices.end, .., .., ..]).to_owned().into_dyn() },
+                _ => panic!("Not supported shape {:?}", self.data.shape()),
+            }
         }
-        else if self_shape.len() == 3 {
-            (0..out_shape[0]).for_each(|i| {
-                (0..out_shape[1]).for_each(|j| {
-                    (0..out_shape[2]).for_each(|k| {
-                        out[[i, j, k]] = self.data[[i + s.start, j, k]].clone();
-                    });
-                });
-            });
+        else if axis == 1 {
+            match self.data.shape().len() {
+                2 => Tensor { data: self.data.slice(s![.., indices.start..indices.end]).to_owned().into_dyn() },
+                3 => Tensor { data: self.data.slice(s![.., indices.start..indices.end, ..]).to_owned().into_dyn() },
+                4 => Tensor { data: self.data.slice(s![.., indices.start..indices.end, .., ..]).to_owned().into_dyn() },
+                _ => panic!("Not supported shape {:?}", self.data.shape()),
+            }
         }
-        else if self_shape.len() == 4 {
-            (0..out_shape[0]).for_each(|i| {
-                (0..out_shape[1]).for_each(|j| {
-                    (0..out_shape[2]).for_each(|k| {
-                        (0..out_shape[3]).for_each(|l| {
-                            out[[i, j, k, l]] = self.data[[i + s.start, j, k, l]].clone();
-                        });
-                    });
-                });
-            });
+        else if axis == 2 {
+            match self.data.shape().len() {
+                3 => Tensor { data: self.data.slice(s![.., .., indices.start..indices.end]).to_owned().into_dyn() },
+                4 => Tensor { data: self.data.slice(s![.., .., indices.start..indices.end, ..]).to_owned().into_dyn() },
+                _ => panic!("Not supported shape {:?}", self.data.shape()),
+            }
         }
-        else { panic!("Not supported shape {:?}", self_shape); }
-
-        Tensor { data: out }
+        else if axis == 3 {
+            match self.data.shape().len() {
+                4 => Tensor { data: self.data.slice(s![.., .., .., indices.start..indices.end]).to_owned().into_dyn() },
+                _ => panic!("Not supported shape {:?}", self.data.shape()),
+            }
+        }
+        else { panic!("Not supported axis {:?}", axis); }
     }
     pub fn requires_grad(&self, requires_grad: bool) {
         self.data.par_iter().for_each(|i| { i.0.write().unwrap().requires_grad = requires_grad; });
@@ -376,6 +371,10 @@ impl Tensor {
             out[[0, i, 0, 0]] = Value::new(values.par_iter().map(|x| (x - mean).powi(2)).sum::<f64>() / self_size as f64);
         });
         Tensor { data: out }
+    }
+    pub fn item(&self) -> f64 {
+        assert_eq!(self.data.shape(), &[1, 1]);
+        self.data[[0, 0]].data()
     }
     pub fn data(&self) -> ArrayD<f64> { self.data.mapv(|x| x.0.read().unwrap().data) }
     pub fn grad(&self) -> ArrayD<f64> { self.data.mapv(|x| x.0.read().unwrap().grad) }
